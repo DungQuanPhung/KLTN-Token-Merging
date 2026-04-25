@@ -50,6 +50,8 @@ class FAST_LCF_BERT_TOME(nn.Module):
 
         pad_id = int(getattr(self.config, "pad_token_id", 0))
         attn_mask = (text_indices != pad_id).float()
+        
+        #cdw
 
         global_context_features = self.bert4global(text_indices)["last_hidden_state"]
 
@@ -67,9 +69,9 @@ class FAST_LCF_BERT_TOME(nn.Module):
         else:
             lcf_matrix = lcf_vec.unsqueeze(2)
 
-        # LCF layer (same as FAST_LCF_BERT)
-        lcf_features = torch.mul(global_context_features, lcf_matrix)
-        lcf_features = self.bert_SA(lcf_features)
+        # LCF layer 
+        lcf_features = torch.mul(global_context_features, lcf_matrix) 
+        lcf_features = self.bert_SA(lcf_features)#self attention khi đã bias bằng lcf
 
         cat_features = torch.cat((lcf_features, global_context_features), dim=-1)
         cat_features = self.linear2(cat_features)
