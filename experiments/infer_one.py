@@ -7,7 +7,11 @@ Load a trained APC checkpoint and predict polarity for **one** train-style sampl
 
 JSON output includes ``thesis_visualization`` with ``token_texts`` (valid subwords).
 If the checkpoint uses ToMe (``use_tome``), the same block also includes
-``tome_token_evolution``: per-step ``token_texts_before`` / ``token_texts_after`` and ``pairs_text``.
+``tome_token_evolution``: per-step tokens + LCF, ``merge_pair_selection``
+(cosine, roles CLS/SEP/side_A/B), and Vietnamese summaries of merge conditions.
+With ``--show-steps``, a single preceding JSON document (``raw_data_through_pipeline_steps``)
+summarizes the same text-level progression without embedding/LCF dumps.
+Optional ``--output-text PATH`` saves the same final payloads as pretty JSON in a UTF-8 text file.
 
 Run from repo root (parent of ``thesis_apc_baseline``), e.g. ``kltn``:
 
@@ -76,6 +80,62 @@ def _merge_token_display(a: str, b: str) -> str:
     return f"({a}∥{b})"
 
 
+def _tome_merge_explanation_vi() -> Dict[str, str]:
+    """Static reference: what can merge, how pairs are chosen, how LCF updates."""
+    return {
+        "pool_dieu_kien_vi": (
+            "Token đầu chuỗi hợp lệ (CLS) và token cuối (SEP) được bảo vệ, không tham gia merge. "
+            "Các vị trí còn lại trong phạm vi hợp lệ tạo thành 'pool nội bộ'; cần ít nhất 2 vị trí "
+            "trong pool thì mới có thể merge."
+        ),
+        "chon_cap_dieu_kien_vi": (
+            "Việc ghép cặp dựa trên hidden BERT (ToMe bipartite), không dùng giá trị LCF để chọn cặp. "
+            "Sắp xếp các chỉ số trong pool theo thứ tự tăng dần; xen kẽ theo thứ tự đó: "
+            "hạng 0,2,4,… thuộc nhánh A, hạng 1,3,5,… thuộc nhánh B. "
+            "Chuẩn hóa L2 vector hidden theo từng token; mỗi token A chọn token B sao cho "
+            "tích vô hướng (cosine) lớn nhất; mỗi B tối đa một lần ghép (duyệt A theo thứ tự)."
+        ),
+        "lcf_sau_merge_vi": (
+            "LCF (trọng số local-context theo aspect) không quyết định cặp merge. "
+            "Sau khi gộp, vị trí src giữ hidden = trung bình hai token; "
+            "LCF tại src = max(LCF[src], LCF[dst]), vị trí dst bị loại bỏ."
+        ),
+    }
+
+
+def _cosine_by_pair(
+    pair_meta: Any, si: int, di: int
+) -> Optional[float]:
+    if not isinstance(pair_meta, dict):
+        return None
+    for row in pair_meta.get("pair_cosine_similarity") or []:
+        if not isinstance(row, dict):
+            continue
+        if int(row.get("src_seq_idx", -1)) == si and int(row.get("dst_seq_idx", -1)) == di:
+            return float(row["cosine_sim"])
+    return None
+
+
+def _rows_token_lcf_role(
+    token_texts: List[str],
+    lcf_vec: Any,
+    roles: Any,
+) -> List[Dict[str, Any]]:
+    lb = lcf_vec if isinstance(lcf_vec, list) else []
+    rl = roles if isinstance(roles, list) else []
+    out: List[Dict[str, Any]] = []
+    for i, tok in enumerate(token_texts):
+        out.append(
+            {
+                "idx": i,
+                "token": tok,
+                "lcf_scalar": lb[i] if i < len(lb) else None,
+                "merge_role_before_this_step": rl[i] if i < len(rl) else None,
+            }
+        )
+    return out
+
+
 def _enrich_tome_trace_with_token_texts(
     trace: Any,
     token_texts: List[str],
@@ -94,11 +154,13 @@ def _enrich_tome_trace_with_token_texts(
 
         for s in steps_in:
             if s.get("skipped"):
+                msel_skip = s.get("merge_pair_selection") or {}
                 enriched_steps.append(
                     {
                         "step": s.get("step"),
                         "skipped": True,
                         "reason": s.get("reason"),
+                        "merge_pair_selection": msel_skip,
                         "token_texts_state": list(labels),
                     }
                 )
@@ -113,17 +175,24 @@ def _enrich_tome_trace_with_token_texts(
 
             token_texts_before = list(labels)
             pairs = s.get("pairs") or []
+            msel = s.get("merge_pair_selection") or {}
+            roles_before = msel.get("per_token_merge_role_before_step")
+            lb = s.get("lcf_before") or []
+            la = s.get("lcf_after") or []
+
             pairs_text: List[Dict[str, Any]] = []
             for p in pairs:
                 if len(p) < 2:
                     continue
                 si, di = int(p[0]), int(p[1])
+                cs = _cosine_by_pair(msel, si, di)
                 pairs_text.append(
                     {
                         "src_idx": si,
                         "dst_idx": di,
                         "src": token_texts_before[si] if 0 <= si < len(token_texts_before) else "?",
                         "dst": token_texts_before[di] if 0 <= di < len(token_texts_before) else "?",
+                        "pair_cosine_sim": cs,
                         "merged_display": _merge_token_display(
                             token_texts_before[si] if 0 <= si < len(token_texts_before) else "?",
                             token_texts_before[di] if 0 <= di < len(token_texts_before) else "?",
@@ -153,6 +222,14 @@ def _enrich_tome_trace_with_token_texts(
                     "skipped": False,
                     "length_before": s.get("length_before"),
                     "length_after": s.get("length_after"),
+                    "merge_pair_selection": msel,
+                    "tokens_lcf_merge_roles_before_merge": _rows_token_lcf_role(
+                        token_texts_before, lb, roles_before
+                    ),
+                    "tokens_lcf_after_merge_packed": [
+                        {"idx": i, "token": t, "lcf_scalar_after_step": la[i] if i < len(la) else None}
+                        for i, t in enumerate(token_texts_after)
+                    ],
                     "token_texts_before": token_texts_before,
                     "token_texts_after": token_texts_after,
                     "pairs": pairs,
@@ -166,80 +243,13 @@ def _enrich_tome_trace_with_token_texts(
                 "length_in": seq.get("length_in"),
                 "length_after_resize": seq.get("length_after_resize"),
                 "token_texts_initial": list(token_texts),
+                "merge_rules_reference_vi": _tome_merge_explanation_vi(),
                 "steps": enriched_steps,
                 "token_texts_after_merges_pre_resize": list(labels),
             }
         )
 
     return out_batches
-
-
-def _print_real_tome_trace(trace: Any) -> None:
-    if not isinstance(trace, list) or not trace:
-        print("[12] real_tome_trace: unavailable")
-        return
-
-    print("[12] real_tome_trace_by_step:")
-
-    for seq in trace:
-        bidx = seq.get("batch_index", 0)
-
-        print(f"\n=== batch {bidx} ===")
-        print(f"length_in = {seq.get('length_in')}")
-
-        for s in seq.get("steps", []):
-            step = s.get("step")
-
-            if s.get("skipped", False):
-                print(f"\nstep {step}: skipped")
-                continue
-
-            print(f"\nstep {step}")
-            print(
-                f"len {s['length_before']} -> {s['length_after']}"
-            )
-
-            print("pairs:")
-            for p in s["pairs"]:
-                print(f"  src={p[0]} dst={p[1]}")
-
-            print("keep_mask:")
-            print(s["keep_mask"])
-
-            print("x_before_preview:")
-            for row in s["x_before_preview"][:5]:
-                print(row)
-
-            print("x_after_preview:")
-            for row in s["x_after_preview"][:5]:
-                print(row)
-
-            print("lcf_before:")
-            print(s["lcf_before"])
-
-            print("lcf_after:")
-            print(s["lcf_after"])
-
-
-def _print_tome_token_evolution(evolution: List[Dict[str, Any]]) -> None:
-    """Human-readable token-string state per ToMe step (for --show-steps)."""
-    print("\n[13] tome_token_evolution (subword labels):")
-    for batch in evolution:
-        print(f"\n--- batch {batch.get('batch_index', 0)} ---")
-        print(f"token_texts_initial: {batch.get('token_texts_initial')}")
-        for st in batch.get("steps", []):
-            if st.get("skipped"):
-                print(f"  step {st.get('step')}: skipped ({st.get('reason')})")
-                continue
-            print(f"  step {st.get('step')}: len {st.get('length_before')} -> {st.get('length_after')}")
-            print(f"    before: {st.get('token_texts_before')}")
-            print(f"    after:  {st.get('token_texts_after')}")
-            for pt in st.get("pairs_text") or []:
-                print(
-                    f"    pair ({pt.get('src_idx')},{pt.get('dst_idx')}): "
-                    f"{pt.get('src')} + {pt.get('dst')} -> {pt.get('merged_display')}"
-                )
-        print(f"  after all merges (pre resize): {batch.get('token_texts_after_merges_pre_resize')}")
 
 
 def _estimate_tome_lengths(valid_tokens: int, merge_steps: int, protect_tokens: int = 2) -> List[Dict[str, int]]:
@@ -264,58 +274,85 @@ def _estimate_tome_lengths(valid_tokens: int, merge_steps: int, protect_tokens: 
     return rows
 
 
-def _debug_print_pipeline(
+def _pipeline_raw_steps_report(
+    raw_payload: Dict[str, Any],
     item: Dict[str, str],
     classifier: Any,
-    raw_payload: Dict[str, Any],
-) -> None:
+    token_texts: List[str],
+    trace_hooked: bool,
+    tome_evolution: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Ordered stages: CLI/JSON payload → normalization → APC string → subwords → ToMe (text view)."""
     sentence_with_t, aspect = normalize_train_style_item(item)
     pyabsa_text = train_style_to_pyabsa_text(sentence_with_t, aspect)
     sentence_reconstructed = sentence_with_t.replace("$T$", aspect)
 
-    print("\n=== INPUT TRACE ===")
-    print("[0] raw_payload_from_cli/json:")
-    print(json.dumps(raw_payload, indent=2, ensure_ascii=False))
-    print(f"[1] normalized_sentence_with_$T$: {sentence_with_t}")
-    print(f"[2] normalized_aspect: {aspect}")
-    print(f"[3] reconstructed_raw_sentence: {sentence_reconstructed}")
-    print(f"[4] pyabsa_text_for_predict: {pyabsa_text}")
-
-    tokenizer = getattr(classifier, "tokenizer", None)
-    if tokenizer is not None and hasattr(tokenizer, "__call__"):
-        max_len = int(getattr(classifier.config, "max_seq_len", 0) or 0)
-        enc = tokenizer(
-            pyabsa_text,
-            truncation=True if max_len > 0 else False,
-            max_length=max_len if max_len > 0 else None,
-            return_attention_mask=True,
-            return_tensors="pt",
-        )
-        ids = enc["input_ids"][0].tolist()
-        attn = enc.get("attention_mask")
-        valid = int(attn[0].sum().item()) if attn is not None else len(ids)
-        print("\n=== TOKEN TRACE ===")
-        print(f"[5] token_count_input_ids: {len(ids)}")
-        print(f"[6] token_count_valid_by_attention_mask: {valid}")
-        print(f"[7] first_32_token_ids: {ids[:32]}")
-    else:
-        valid = -1
-        print("\n=== TOKEN TRACE ===")
-        print("[5] tokenizer unavailable for token counting.")
-
     use_tome = bool(getattr(classifier.config, "use_tome", False))
     merge_steps = int(getattr(classifier.config, "tome_merge_steps", 0) or 0)
-    print("\n=== MERGE TRACE (ESTIMATION) ===")
-    print(f"[8] use_tome: {use_tome}")
-    print(f"[9] tome_merge_steps: {merge_steps}")
-    if use_tome and valid >= 0:
-        sim = _estimate_tome_lengths(valid, merge_steps, protect_tokens=2)
-        print("[10] merge_simulation_before_resize:")
-        print(json.dumps(sim, indent=2, ensure_ascii=False))
-        print(
-            f"[11] note: model resizes merged sequence back to fixed length={valid} "
-            "for downstream layers."
-        )
+    merge_sim: Optional[List[Dict[str, int]]] = None
+    if use_tome and token_texts:
+        merge_sim = _estimate_tome_lengths(len(token_texts), merge_steps, protect_tokens=2)
+
+    note_resize = (
+        f"After merging, the model resizes the shortened sequence back to length={len(token_texts)} "
+        "before later layers."
+        if use_tome and token_texts
+        else None
+    )
+
+    evolution_payload: Optional[Any] = tome_evolution
+    evolution_note = None
+    if use_tome and not evolution_payload:
+        if not trace_hooked:
+            evolution_note = "ToMe trace hook did not attach (model structure?)."
+        else:
+            evolution_note = "Forward produced no usable trace."
+
+    stages: List[Dict[str, Any]] = [
+        {"stage": "raw_input_cli_or_json", "data": dict(raw_payload)},
+        {
+            "stage": "normalized_train_style_fields",
+            "sentence_with_$T$_placeholder": sentence_with_t,
+            "aspect": aspect,
+        },
+        {"stage": "reconstructed_plain_sentence", "sentence": sentence_reconstructed},
+        {"stage": "pyabsa_predict_line", "text": pyabsa_text},
+        {
+            "stage": "tokenizer_valid_subwords_ordered",
+            "token_texts": list(token_texts),
+            "n_valid_tokens": len(token_texts),
+        },
+    ]
+
+    tome_stage: Dict[str, Any] = {
+        "stage": "tome_configuration",
+        "use_tome": use_tome,
+        "config_tome_merge_steps": merge_steps,
+        "estimated_seq_lengths_before_resize": merge_sim,
+        "resize_note": note_resize,
+    }
+    if use_tome:
+        tome_stage["merge_pair_rules_reference_vi"] = _tome_merge_explanation_vi()
+    if evolution_payload:
+        tome_stage["live_token_evolution_per_batch"] = evolution_payload
+    elif evolution_note:
+        tome_stage["live_token_evolution_per_batch"] = None
+        tome_stage["live_trace_note"] = evolution_note
+    stages.append(tome_stage)
+
+    return {"title": "raw_data_through_pipeline_steps", "stages": stages}
+
+
+def _write_infer_result_text(out_path: Path, sections: List[Dict[str, Any]], *, encoding: str = "utf-8") -> None:
+    """Save pretty JSON sections to one UTF-8 text file."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    parts = []
+    for blk in sections:
+        title = str(blk.get("title") or "Section")
+        body = blk.get("data")
+        blob = json.dumps(to_json_serializable(body), indent=2, ensure_ascii=False)
+        parts.append(f"== {title} ==\n{blob}")
+    out_path.write_text("\n\n".join(parts).rstrip() + "\n", encoding=encoding)
 
 
 def main() -> None:
@@ -343,7 +380,15 @@ def main() -> None:
     parser.add_argument(
         "--show-steps",
         action="store_true",
-        help="Print intermediate transformations and token merge shrink estimation.",
+        help="Print one JSON block: raw input → normalized strings → tokenizer → ToMe evolution (text).",
+    )
+    parser.add_argument(
+        "--output-text",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Write final payloads as pretty UTF-8 text (same structured JSON as printed to stdout). "
+        "If --show-steps was used, the file also starts with the pipeline JSON block.",
     )
     args = parser.parse_args()
 
@@ -363,8 +408,6 @@ def main() -> None:
 
     trace_cache: Dict[str, Any] = {}
     use_tome = bool(getattr(clf.config, "use_tome", False))
-    if args.show_steps:
-        _debug_print_pipeline(item, clf, raw_payload=raw_payload)
     if args.show_steps or use_tome:
         trace_cache = _attach_tome_trace_hook(clf)
 
@@ -376,17 +419,41 @@ def main() -> None:
     if enriched is not None:
         viz = {**viz, "tome_token_evolution": enriched}
 
-    if args.show_steps and trace_cache.get("hooked"):
-        print("\n=== MERGE TRACE (REAL) ===")
-        _print_real_tome_trace(raw_trace)
-        if enriched:
-            _print_tome_token_evolution(enriched)
+    pipe_report: Optional[Dict[str, Any]] = None
+    if args.show_steps:
+        pipe_report = _pipeline_raw_steps_report(
+            raw_payload,
+            item,
+            clf,
+            viz.get("token_texts") or [],
+            trace_hooked=bool(trace_cache.get("hooked")),
+            tome_evolution=enriched,
+        )
+        print(json.dumps(to_json_serializable(pipe_report), indent=2, ensure_ascii=False))
     ser = to_json_serializable(out)
     if isinstance(ser, dict):
         ser_with_viz = {**ser, "thesis_visualization": viz}
     else:
         ser_with_viz = {"result": ser, "thesis_visualization": viz}
-    print(json.dumps(to_json_serializable(ser_with_viz), indent=2, ensure_ascii=False))
+
+    resolved = to_json_serializable(ser_with_viz)
+
+    print(json.dumps(resolved, indent=2, ensure_ascii=False))
+
+    if args.output_text:
+        text_sections: List[Dict[str, Any]] = []
+        if pipe_report is not None:
+            text_sections.append(
+                {"title": "Tiến trình raw → tokenizer → ToMe (--show-steps)", "data": pipe_report}
+            )
+        text_sections.append({"title": "Kết quả inference (sentiment + thesis_visualization)", "data": resolved})
+        out_txt = Path(args.output_text).expanduser()
+        try:
+            _write_infer_result_text(out_txt, text_sections)
+        except OSError as e:
+            print(f"[infer_one] Lỗi ghi file text: {e}", file=sys.stderr)
+            raise SystemExit(2) from e
+        print(f"[infer_one] Đã ghi file text: {out_txt.resolve()}", file=sys.stderr)
 
 
 if __name__ == "__main__":
