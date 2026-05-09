@@ -125,29 +125,72 @@ def split_sentence_with_terms_llm(
     return result
 
 
+import re
+
 def clauses_to_infer_one_inputs(
     clause_items: List[Dict[str, str]],
 ) -> List[Dict[str, str]]:
-    """
-    Convert clause+term items to infer_one input format:
-    {"sentence": "<left $T$ right>", "aspect": "<term>"}.
 
-    If a clause has multiple comma-separated terms, it emits one input per term.
-    Clauses without term are skipped because infer_one requires non-empty aspect.
-    """
     infer_inputs: List[Dict[str, str]] = []
+
+    pronouns = {
+        "it",
+        "they",
+        "them",
+        "this",
+        "that",
+        "these",
+        "those",
+        "he",
+        "she",
+        "him",
+        "her",
+        "its",
+        "their",
+    }
+
+    pronoun_pattern = re.compile(
+        r"\b(" + "|".join(map(re.escape, pronouns)) + r")\b",
+        flags=re.I,
+    )
+
     for item in clause_items:
         clause = item.get("clause", "").strip()
         term_str = item.get("term", "").strip()
+
         if not clause or not term_str:
             continue
 
         terms = [t.strip() for t in term_str.split(",") if t.strip()]
+
         for term in terms:
-            if term not in clause:
-                continue
-            sentence_with_t = clause.replace(term, "$T$", 1)
-            infer_inputs.append({"sentence": sentence_with_t, "aspect": term})
+
+            # CASE 1: explicit aspect exists in clause
+            if term in clause:
+                sentence_with_t = clause.replace(term, "$T$", 1)
+
+            # CASE 2: pronoun reference
+            else:
+                m = pronoun_pattern.search(clause)
+
+                if not m:
+                    continue
+
+                pronoun = m.group(0)
+
+                sentence_with_t = clause.replace(
+                    pronoun,
+                    "$T$",
+                    1,
+                )
+
+            infer_inputs.append(
+                {
+                    "sentence": sentence_with_t,
+                    "aspect": term,
+                }
+            )
+
     return infer_inputs
 
 

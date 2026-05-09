@@ -1,5 +1,13 @@
 
 # -*- coding: utf-8 -*-
+import sys
+from pathlib import Path
+from typing import Optional
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 from transformers import BertTokenizer, BertModel
 import pprint
@@ -7,6 +15,7 @@ import argparse
 import json
 
 from thesis_apc_baseline.token_merging.tome_1d import ToMeSequenceMerger
+from thesis_apc_baseline.trace_utils import default_trace_path, write_token_merging_trace_txt
 
 # =========================
 # CONFIG
@@ -26,7 +35,7 @@ tome = ToMeSequenceMerger(
 # =========================
 # PIPELINE
 # =========================
-def run_pipeline(input_json):
+def run_pipeline(input_json, *, trace_txt: Optional[str] = None):
     sentence = input_json["sentence"]
     aspect = input_json["aspect"]
 
@@ -89,6 +98,27 @@ def run_pipeline(input_json):
     print("hidden shape:", merged_h.shape)
     print("lcf shape   :", merged_lcf.shape)
 
+    if trace_txt is not None:
+        out_path = (
+            default_trace_path(prefix="raw_state_tome")
+            if trace_txt.strip().lower() in {"", "auto"}
+            else trace_txt
+        )
+        res = write_token_merging_trace_txt(
+            Path(out_path),
+            sentence=sentence,
+            aspect=aspect,
+            tokens=tokens,
+            input_ids=input_ids[0].detach().cpu().tolist(),
+            attention_mask=attention_mask[0].detach().cpu().tolist(),
+            hidden_shape=tuple(hidden.shape),
+            lcf_vec=lcf_vec[0].detach().cpu().tolist(),
+            trace=trace,
+            merged_hidden_shape=tuple(merged_h.shape),
+            merged_lcf_shape=tuple(merged_lcf.shape),
+        )
+        print(f"\n[trace] wrote: {res.path}")
+
     # =========================
     # STEP 5: TRACE
     # =========================
@@ -116,17 +146,33 @@ def run_pipeline(input_json):
 # =========================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
+    src = parser.add_mutually_exclusive_group(required=True)
+    src.add_argument(
         "--json",
         type=str,
-        required=True,
-        help='Input JSON: {"sentence": "...", "aspect": "..."}'
+        help='Input JSON string: {"sentence": "...", "aspect": "..."}',
+    )
+    src.add_argument(
+        "--json-file",
+        type=str,
+        help="Path to a JSON file containing {sentence, aspect}. Avoids shell quoting issues.",
+    )
+    parser.add_argument(
+        "--trace-txt",
+        type=str,
+        nargs="?",
+        const="auto",
+        default=None,
+        help="Write raw-state trace to .txt. Omit value to auto-name under ./logs/ (e.g. --trace-txt).",
     )
 
     args = parser.parse_args()
 
-    # Parse JSON string
-    input_json = json.loads(args.json)
+    # Load JSON (string or file)
+    if args.json_file is not None:
+        input_json = json.loads(Path(args.json_file).read_text(encoding="utf-8"))
+    else:
+        input_json = json.loads(args.json)
 
-    run_pipeline(input_json)
+    run_pipeline(input_json, trace_txt=args.trace_txt)
 
