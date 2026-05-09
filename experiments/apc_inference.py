@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Mapping, Sequence, Tuple, Union
+from typing import Any, Dict, List, Mapping, Sequence, Tuple, Union
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -116,6 +116,40 @@ def infer_train_style_item(
     sentence, aspect = normalize_train_style_item(item)
     line = train_style_to_pyabsa_text(sentence, aspect)
     return classifier.predict(line, print_result=print_result, ignore_error=True)
+
+
+def thesis_visualization_for_train_style_item(
+    classifier: Any,
+    item: TrainStyleItem,
+) -> Dict[str, List[str]]:
+    """Token strings for the same ``predict`` encoding (trunc/pad-aware), trimmed by attention mask.
+
+    Intended for thesis figures / downstream JSON (e.g. ``infer_one``).
+    """
+    sentence, aspect = normalize_train_style_item(item)
+    line = train_style_to_pyabsa_text(sentence, aspect)
+    tokenizer = getattr(classifier, "tokenizer", None)
+    if tokenizer is None or not callable(tokenizer):
+        return {"token_texts": []}
+    max_len = int(getattr(classifier.config, "max_seq_len", 0) or 0)
+    enc = tokenizer(
+        line,
+        truncation=True if max_len > 0 else False,
+        max_length=max_len if max_len > 0 else None,
+        return_attention_mask=True,
+        return_tensors="pt",
+    )
+    ids = enc["input_ids"][0].tolist()
+    attn = enc.get("attention_mask")
+    if attn is not None:
+        valid = int(attn[0].sum().item())
+        ids = ids[:valid]
+    conv = getattr(tokenizer, "convert_ids_to_tokens", None)
+    if callable(conv):
+        texts = conv(ids)
+    else:
+        texts = [str(i) for i in ids]
+    return {"token_texts": list(texts)}
 
 
 def parse_item_json(s: str) -> TrainStyleItem:

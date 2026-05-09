@@ -16,6 +16,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def _tensor_preview(x: torch.Tensor, k: int = 4) -> List[List[float]]:
+    """
+    Chỉ lấy vài chiều đầu để debug cho gọn.
+    """
+    if x.numel() == 0:
+        return []
+    return x[:, :k].detach().cpu().tolist()
+
 
 def _normalize(metric: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     return metric / (metric.norm(dim=-1, keepdim=True) + eps)
@@ -206,16 +214,48 @@ class ToMeSequenceMerger(nn.Module):
                     break
 
                 pairs = torch.stack([src, dst], dim=1).tolist()
-                x_seg, lf_seg, _keep = _merge_pairs(x_seg, lf_seg, src, dst)
+
+                # ===== DEBUG BEFORE =====
+                x_before = x_seg.clone()
+                lcf_before = lf_seg.clone()
+
+                # merge
+                x_seg, lf_seg, keep_mask = _merge_pairs(
+                    x_seg,
+                    lf_seg,
+                    src,
+                    dst,
+                )
+
+                # ===== DEBUG AFTER =====
+                x_after = x_seg.clone()
+                lcf_after = lf_seg.clone()
+
                 m_seg = torch.ones(x_seg.size(0), device=device, dtype=dtype)
                 after = x_seg.size(0)
+
                 seq_trace["steps"].append(
                     {
                         "step": step,
                         "skipped": False,
-                        "pairs": pairs,
+
+                        # shape info
                         "length_before": before,
                         "length_after": after,
+
+                        # merge pairs
+                        "pairs": pairs,
+
+                        # removed positions
+                        "keep_mask": keep_mask.detach().cpu().tolist(),
+
+                        # embedding preview
+                        "x_before_preview": _tensor_preview(x_before),
+                        "x_after_preview": _tensor_preview(x_after),
+
+                        # lcf preview
+                        "lcf_before": lcf_before.detach().cpu().tolist(),
+                        "lcf_after": lcf_after.detach().cpu().tolist(),
                     }
                 )
 
@@ -230,3 +270,4 @@ class ToMeSequenceMerger(nn.Module):
         merged_h = torch.stack(out_h, dim=0)
         merged_lcf = torch.stack(out_l, dim=0)
         return batch_trace, merged_h, merged_lcf
+

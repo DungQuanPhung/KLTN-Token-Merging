@@ -17,6 +17,8 @@ Or pass one JSON object:
   python thesis_apc_baseline/experiments/infer_one.py ^
     --checkpoint <path> ^
     --json-item "{\"sentence\": \"The $T$ was cold .\", \"aspect\": \"pizza\"}"
+    src receives average(src, dst)
+dst removed
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from thesis_apc_baseline.experiments.apc_inference import (
     load_apc_sentiment_classifier,
     normalize_train_style_item,
     parse_item_json,
+    thesis_visualization_for_train_style_item,
     train_style_to_pyabsa_text,
     to_json_serializable,
 )
@@ -70,21 +73,47 @@ def _print_real_tome_trace(trace: Any) -> None:
     if not isinstance(trace, list) or not trace:
         print("[12] real_tome_trace: unavailable")
         return
+
     print("[12] real_tome_trace_by_step:")
+
     for seq in trace:
         bidx = seq.get("batch_index", 0)
-        print(f"  - batch_index={bidx}, length_in={seq.get('length_in')}")
+
+        print(f"\n=== batch {bidx} ===")
+        print(f"length_in = {seq.get('length_in')}")
+
         for s in seq.get("steps", []):
             step = s.get("step")
-            if s.get("skipped", False):
-                print(f"    step {step}: skipped ({s.get('reason')})")
-                continue
-            lb = s.get("length_before")
-            la = s.get("length_after")
-            pairs = s.get("pairs", [])
-            print(f"    step {step}: len {lb} -> {la}, merged_pairs={len(pairs)}")
-            print(f"      pairs(src,dst): {pairs}")
 
+            if s.get("skipped", False):
+                print(f"\nstep {step}: skipped")
+                continue
+
+            print(f"\nstep {step}")
+            print(
+                f"len {s['length_before']} -> {s['length_after']}"
+            )
+
+            print("pairs:")
+            for p in s["pairs"]:
+                print(f"  src={p[0]} dst={p[1]}")
+
+            print("keep_mask:")
+            print(s["keep_mask"])
+
+            print("x_before_preview:")
+            for row in s["x_before_preview"][:5]:
+                print(row)
+
+            print("x_after_preview:")
+            for row in s["x_after_preview"][:5]:
+                print(row)
+
+            print("lcf_before:")
+            print(s["lcf_before"])
+
+            print("lcf_after:")
+            print(s["lcf_after"])
 
 def _estimate_tome_lengths(valid_tokens: int, merge_steps: int, protect_tokens: int = 2) -> List[Dict[str, int]]:
     """Estimate token count shrink per ToMe step (before resize back to fixed length)."""
@@ -212,7 +241,14 @@ def main() -> None:
     if args.show_steps and trace_cache.get("hooked"):
         print("\n=== MERGE TRACE (REAL) ===")
         _print_real_tome_trace(trace_cache.get("trace"))
-    print(json.dumps(to_json_serializable(out), indent=2, ensure_ascii=False))
+
+    viz = thesis_visualization_for_train_style_item(clf, item)
+    ser = to_json_serializable(out)
+    if isinstance(ser, dict):
+        ser_with_viz = {**ser, "thesis_visualization": viz}
+    else:
+        ser_with_viz = {"result": ser, "thesis_visualization": viz}
+    print(json.dumps(to_json_serializable(ser_with_viz), indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
