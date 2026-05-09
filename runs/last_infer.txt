@@ -1,0 +1,1217 @@
+== Tiến trình raw → tokenizer → ToMe (--show-steps) ==
+{
+  "title": "raw_data_through_pipeline_steps",
+  "stages": [
+    {
+      "stage": "raw_input_cli_or_json",
+      "data": {
+        "sentence": "The $T$ was great but the staff was rude.",
+        "aspect": "pizza"
+      }
+    },
+    {
+      "stage": "normalized_train_style_fields",
+      "sentence_with_$T$_placeholder": "The $T$ was great but the staff was rude.",
+      "aspect": "pizza"
+    },
+    {
+      "stage": "reconstructed_plain_sentence",
+      "sentence": "The pizza was great but the staff was rude."
+    },
+    {
+      "stage": "pyabsa_predict_line",
+      "text": "The [B-ASP] pizza [E-ASP] was great but the staff was rude."
+    },
+    {
+      "stage": "tokenizer_valid_subwords_ordered",
+      "token_texts": [
+        "[CLS]",
+        "the",
+        "[",
+        "b",
+        "-",
+        "as",
+        "##p",
+        "]",
+        "pizza",
+        "[",
+        "e",
+        "-",
+        "as",
+        "##p",
+        "]",
+        "was",
+        "great",
+        "but",
+        "the",
+        "staff",
+        "was",
+        "rude",
+        ".",
+        "[SEP]"
+      ],
+      "n_valid_tokens": 24
+    },
+    {
+      "stage": "tome_configuration",
+      "use_tome": true,
+      "config_tome_merge_steps": 2,
+      "estimated_seq_lengths_before_resize": [
+        {
+          "step": 0,
+          "length_before": 24,
+          "merged_pairs": 11,
+          "length_after": 13
+        },
+        {
+          "step": 1,
+          "length_before": 13,
+          "merged_pairs": 5,
+          "length_after": 8
+        }
+      ],
+      "resize_note": "After merging, the model resizes the shortened sequence back to length=24 before later layers.",
+      "merge_pair_rules_reference_vi": {
+        "pool_dieu_kien_vi": "Token đầu chuỗi hợp lệ (CLS) và token cuối (SEP) được bảo vệ, không tham gia merge. Các vị trí còn lại trong phạm vi hợp lệ tạo thành 'pool nội bộ'; cần ít nhất 2 vị trí trong pool thì mới có thể merge.",
+        "chon_cap_dieu_kien_vi": "Việc ghép cặp dựa trên hidden BERT (ToMe bipartite), không dùng giá trị LCF để chọn cặp. Sắp xếp các chỉ số trong pool theo thứ tự tăng dần; xen kẽ theo thứ tự đó: hạng 0,2,4,… thuộc nhánh A, hạng 1,3,5,… thuộc nhánh B. Chuẩn hóa L2 vector hidden theo từng token; mỗi token A chọn token B sao cho tích vô hướng (cosine) lớn nhất; mỗi B tối đa một lần ghép (duyệt A theo thứ tự).",
+        "lcf_sau_merge_vi": "LCF (trọng số local-context theo aspect) không quyết định cặp merge. Sau khi gộp, vị trí src giữ hidden = trung bình hai token; LCF tại src = max(LCF[src], LCF[dst]), vị trí dst bị loại bỏ."
+      },
+      "live_token_evolution_per_batch": [
+        {
+          "batch_index": 0,
+          "length_in": 80,
+          "length_after_resize": 80,
+          "token_texts_initial": [
+            "[CLS]",
+            "the",
+            "[",
+            "b",
+            "-",
+            "as",
+            "##p",
+            "]",
+            "pizza",
+            "[",
+            "e",
+            "-",
+            "as",
+            "##p",
+            "]",
+            "was",
+            "great",
+            "but",
+            "the",
+            "staff",
+            "was",
+            "rude",
+            ".",
+            "[SEP]"
+          ],
+          "merge_rules_reference_vi": {
+            "pool_dieu_kien_vi": "Token đầu chuỗi hợp lệ (CLS) và token cuối (SEP) được bảo vệ, không tham gia merge. Các vị trí còn lại trong phạm vi hợp lệ tạo thành 'pool nội bộ'; cần ít nhất 2 vị trí trong pool thì mới có thể merge.",
+            "chon_cap_dieu_kien_vi": "Việc ghép cặp dựa trên hidden BERT (ToMe bipartite), không dùng giá trị LCF để chọn cặp. Sắp xếp các chỉ số trong pool theo thứ tự tăng dần; xen kẽ theo thứ tự đó: hạng 0,2,4,… thuộc nhánh A, hạng 1,3,5,… thuộc nhánh B. Chuẩn hóa L2 vector hidden theo từng token; mỗi token A chọn token B sao cho tích vô hướng (cosine) lớn nhất; mỗi B tối đa một lần ghép (duyệt A theo thứ tự).",
+            "lcf_sau_merge_vi": "LCF (trọng số local-context theo aspect) không quyết định cặp merge. Sau khi gộp, vị trí src giữ hidden = trung bình hai token; LCF tại src = max(LCF[src], LCF[dst]), vị trí dst bị loại bỏ."
+          },
+          "steps": [
+            {
+              "step": 0,
+              "skipped": false,
+              "length_before": 14,
+              "length_after": 10,
+              "merge_pair_selection": {
+                "status": "ok",
+                "protect_left_positions": 1,
+                "protect_right_positions": 1,
+                "interior_candidates_ordered": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12
+                ],
+                "per_token_merge_role_before_step": [
+                  "protected_cls",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "protected_sep"
+                ],
+                "pair_cosine_similarity": [
+                  {
+                    "src_seq_idx": 1,
+                    "dst_seq_idx": 4,
+                    "cosine_sim": 0.8717132210731506
+                  },
+                  {
+                    "src_seq_idx": 5,
+                    "dst_seq_idx": 8,
+                    "cosine_sim": 0.8784588575363159
+                  },
+                  {
+                    "src_seq_idx": 7,
+                    "dst_seq_idx": 6,
+                    "cosine_sim": 0.8887079954147339
+                  },
+                  {
+                    "src_seq_idx": 11,
+                    "dst_seq_idx": 10,
+                    "cosine_sim": 0.4405170679092407
+                  }
+                ]
+              },
+              "tokens_lcf_merge_roles_before_merge": [
+                {
+                  "idx": 0,
+                  "token": "[CLS]",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "protected_cls"
+                },
+                {
+                  "idx": 1,
+                  "token": "the",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 2,
+                  "token": "[",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 3,
+                  "token": "b",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 4,
+                  "token": "-",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 5,
+                  "token": "as",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 6,
+                  "token": "##p",
+                  "lcf_scalar": 0.9166666865348816,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 7,
+                  "token": "]",
+                  "lcf_scalar": 0.8333333134651184,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 8,
+                  "token": "pizza",
+                  "lcf_scalar": 0.75,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 9,
+                  "token": "[",
+                  "lcf_scalar": 0.6666666865348816,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 10,
+                  "token": "e",
+                  "lcf_scalar": 0.5833333134651184,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 11,
+                  "token": "-",
+                  "lcf_scalar": 0.5,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 12,
+                  "token": "as",
+                  "lcf_scalar": 0.0,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 13,
+                  "token": "##p",
+                  "lcf_scalar": 0.0,
+                  "merge_role_before_this_step": "protected_sep"
+                }
+              ],
+              "tokens_lcf_after_merge_packed": [
+                {
+                  "idx": 0,
+                  "token": "[CLS]",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 1,
+                  "token": "(the∥-)",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 2,
+                  "token": "[",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 3,
+                  "token": "b",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 4,
+                  "token": "(as∥pizza)",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 5,
+                  "token": "(]∥##p)",
+                  "lcf_scalar_after_step": 0.9166666865348816
+                },
+                {
+                  "idx": 6,
+                  "token": "[",
+                  "lcf_scalar_after_step": 0.6666666865348816
+                },
+                {
+                  "idx": 7,
+                  "token": "(-∥e)",
+                  "lcf_scalar_after_step": 0.5833333134651184
+                },
+                {
+                  "idx": 8,
+                  "token": "as",
+                  "lcf_scalar_after_step": 0.0
+                },
+                {
+                  "idx": 9,
+                  "token": "##p",
+                  "lcf_scalar_after_step": 0.0
+                }
+              ],
+              "token_texts_before": [
+                "[CLS]",
+                "the",
+                "[",
+                "b",
+                "-",
+                "as",
+                "##p",
+                "]",
+                "pizza",
+                "[",
+                "e",
+                "-",
+                "as",
+                "##p"
+              ],
+              "token_texts_after": [
+                "[CLS]",
+                "(the∥-)",
+                "[",
+                "b",
+                "(as∥pizza)",
+                "(]∥##p)",
+                "[",
+                "(-∥e)",
+                "as",
+                "##p"
+              ],
+              "pairs": [
+                [
+                  1,
+                  4
+                ],
+                [
+                  5,
+                  8
+                ],
+                [
+                  7,
+                  6
+                ],
+                [
+                  11,
+                  10
+                ]
+              ],
+              "pairs_text": [
+                {
+                  "src_idx": 1,
+                  "dst_idx": 4,
+                  "src": "the",
+                  "dst": "-",
+                  "pair_cosine_sim": 0.8717132210731506,
+                  "merged_display": "(the∥-)"
+                },
+                {
+                  "src_idx": 5,
+                  "dst_idx": 8,
+                  "src": "as",
+                  "dst": "pizza",
+                  "pair_cosine_sim": 0.8784588575363159,
+                  "merged_display": "(as∥pizza)"
+                },
+                {
+                  "src_idx": 7,
+                  "dst_idx": 6,
+                  "src": "]",
+                  "dst": "##p",
+                  "pair_cosine_sim": 0.8887079954147339,
+                  "merged_display": "(]∥##p)"
+                },
+                {
+                  "src_idx": 11,
+                  "dst_idx": 10,
+                  "src": "-",
+                  "dst": "e",
+                  "pair_cosine_sim": 0.4405170679092407,
+                  "merged_display": "(-∥e)"
+                }
+              ]
+            },
+            {
+              "step": 1,
+              "skipped": false,
+              "length_before": 10,
+              "length_after": 7,
+              "merge_pair_selection": {
+                "status": "ok",
+                "protect_left_positions": 1,
+                "protect_right_positions": 1,
+                "interior_candidates_ordered": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8
+                ],
+                "per_token_merge_role_before_step": [
+                  "protected_cls",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "merge_side_A",
+                  "merge_side_B",
+                  "protected_sep"
+                ],
+                "pair_cosine_similarity": [
+                  {
+                    "src_seq_idx": 1,
+                    "dst_seq_idx": 2,
+                    "cosine_sim": 0.8429473638534546
+                  },
+                  {
+                    "src_seq_idx": 5,
+                    "dst_seq_idx": 4,
+                    "cosine_sim": 0.9069130420684814
+                  },
+                  {
+                    "src_seq_idx": 7,
+                    "dst_seq_idx": 8,
+                    "cosine_sim": 0.7339325547218323
+                  }
+                ]
+              },
+              "tokens_lcf_merge_roles_before_merge": [
+                {
+                  "idx": 0,
+                  "token": "[CLS]",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "protected_cls"
+                },
+                {
+                  "idx": 1,
+                  "token": "(the∥-)",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 2,
+                  "token": "[",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 3,
+                  "token": "b",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 4,
+                  "token": "(as∥pizza)",
+                  "lcf_scalar": 1.0,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 5,
+                  "token": "(]∥##p)",
+                  "lcf_scalar": 0.9166666865348816,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 6,
+                  "token": "[",
+                  "lcf_scalar": 0.6666666865348816,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 7,
+                  "token": "(-∥e)",
+                  "lcf_scalar": 0.5833333134651184,
+                  "merge_role_before_this_step": "merge_side_A"
+                },
+                {
+                  "idx": 8,
+                  "token": "as",
+                  "lcf_scalar": 0.0,
+                  "merge_role_before_this_step": "merge_side_B"
+                },
+                {
+                  "idx": 9,
+                  "token": "##p",
+                  "lcf_scalar": 0.0,
+                  "merge_role_before_this_step": "protected_sep"
+                }
+              ],
+              "tokens_lcf_after_merge_packed": [
+                {
+                  "idx": 0,
+                  "token": "[CLS]",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 1,
+                  "token": "((the∥-)∥[)",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 2,
+                  "token": "b",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 3,
+                  "token": "((]∥##p)∥(as∥pizza))",
+                  "lcf_scalar_after_step": 1.0
+                },
+                {
+                  "idx": 4,
+                  "token": "[",
+                  "lcf_scalar_after_step": 0.6666666865348816
+                },
+                {
+                  "idx": 5,
+                  "token": "((-∥e)∥as)",
+                  "lcf_scalar_after_step": 0.5833333134651184
+                },
+                {
+                  "idx": 6,
+                  "token": "##p",
+                  "lcf_scalar_after_step": 0.0
+                }
+              ],
+              "token_texts_before": [
+                "[CLS]",
+                "(the∥-)",
+                "[",
+                "b",
+                "(as∥pizza)",
+                "(]∥##p)",
+                "[",
+                "(-∥e)",
+                "as",
+                "##p"
+              ],
+              "token_texts_after": [
+                "[CLS]",
+                "((the∥-)∥[)",
+                "b",
+                "((]∥##p)∥(as∥pizza))",
+                "[",
+                "((-∥e)∥as)",
+                "##p"
+              ],
+              "pairs": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  5,
+                  4
+                ],
+                [
+                  7,
+                  8
+                ]
+              ],
+              "pairs_text": [
+                {
+                  "src_idx": 1,
+                  "dst_idx": 2,
+                  "src": "(the∥-)",
+                  "dst": "[",
+                  "pair_cosine_sim": 0.8429473638534546,
+                  "merged_display": "((the∥-)∥[)"
+                },
+                {
+                  "src_idx": 5,
+                  "dst_idx": 4,
+                  "src": "(]∥##p)",
+                  "dst": "(as∥pizza)",
+                  "pair_cosine_sim": 0.9069130420684814,
+                  "merged_display": "((]∥##p)∥(as∥pizza))"
+                },
+                {
+                  "src_idx": 7,
+                  "dst_idx": 8,
+                  "src": "(-∥e)",
+                  "dst": "as",
+                  "pair_cosine_sim": 0.7339325547218323,
+                  "merged_display": "((-∥e)∥as)"
+                }
+              ]
+            }
+          ],
+          "token_texts_after_merges_pre_resize": [
+            "[CLS]",
+            "((the∥-)∥[)",
+            "b",
+            "((]∥##p)∥(as∥pizza))",
+            "[",
+            "((-∥e)∥as)",
+            "##p"
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+== Kết quả inference (sentiment + thesis_visualization) ==
+{
+  "text": "The  pizza  was great but the staff was rude.",
+  "aspect": [
+    " pizza "
+  ],
+  "sentiment": [
+    "Positive"
+  ],
+  "confidence": [
+    0.5425843000411987
+  ],
+  "probs": [
+    [
+      0.3838613033294678,
+      0.0735543817281723,
+      0.5425843000411987
+    ]
+  ],
+  "ref_sentiment": [
+    "-100"
+  ],
+  "ref_check": [
+    ""
+  ],
+  "perplexity": "N.A.",
+  "thesis_visualization": {
+    "token_texts": [
+      "[CLS]",
+      "the",
+      "[",
+      "b",
+      "-",
+      "as",
+      "##p",
+      "]",
+      "pizza",
+      "[",
+      "e",
+      "-",
+      "as",
+      "##p",
+      "]",
+      "was",
+      "great",
+      "but",
+      "the",
+      "staff",
+      "was",
+      "rude",
+      ".",
+      "[SEP]"
+    ],
+    "tome_token_evolution": [
+      {
+        "batch_index": 0,
+        "length_in": 80,
+        "length_after_resize": 80,
+        "token_texts_initial": [
+          "[CLS]",
+          "the",
+          "[",
+          "b",
+          "-",
+          "as",
+          "##p",
+          "]",
+          "pizza",
+          "[",
+          "e",
+          "-",
+          "as",
+          "##p",
+          "]",
+          "was",
+          "great",
+          "but",
+          "the",
+          "staff",
+          "was",
+          "rude",
+          ".",
+          "[SEP]"
+        ],
+        "merge_rules_reference_vi": {
+          "pool_dieu_kien_vi": "Token đầu chuỗi hợp lệ (CLS) và token cuối (SEP) được bảo vệ, không tham gia merge. Các vị trí còn lại trong phạm vi hợp lệ tạo thành 'pool nội bộ'; cần ít nhất 2 vị trí trong pool thì mới có thể merge.",
+          "chon_cap_dieu_kien_vi": "Việc ghép cặp dựa trên hidden BERT (ToMe bipartite), không dùng giá trị LCF để chọn cặp. Sắp xếp các chỉ số trong pool theo thứ tự tăng dần; xen kẽ theo thứ tự đó: hạng 0,2,4,… thuộc nhánh A, hạng 1,3,5,… thuộc nhánh B. Chuẩn hóa L2 vector hidden theo từng token; mỗi token A chọn token B sao cho tích vô hướng (cosine) lớn nhất; mỗi B tối đa một lần ghép (duyệt A theo thứ tự).",
+          "lcf_sau_merge_vi": "LCF (trọng số local-context theo aspect) không quyết định cặp merge. Sau khi gộp, vị trí src giữ hidden = trung bình hai token; LCF tại src = max(LCF[src], LCF[dst]), vị trí dst bị loại bỏ."
+        },
+        "steps": [
+          {
+            "step": 0,
+            "skipped": false,
+            "length_before": 14,
+            "length_after": 10,
+            "merge_pair_selection": {
+              "status": "ok",
+              "protect_left_positions": 1,
+              "protect_right_positions": 1,
+              "interior_candidates_ordered": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12
+              ],
+              "per_token_merge_role_before_step": [
+                "protected_cls",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "protected_sep"
+              ],
+              "pair_cosine_similarity": [
+                {
+                  "src_seq_idx": 1,
+                  "dst_seq_idx": 4,
+                  "cosine_sim": 0.8717132210731506
+                },
+                {
+                  "src_seq_idx": 5,
+                  "dst_seq_idx": 8,
+                  "cosine_sim": 0.8784588575363159
+                },
+                {
+                  "src_seq_idx": 7,
+                  "dst_seq_idx": 6,
+                  "cosine_sim": 0.8887079954147339
+                },
+                {
+                  "src_seq_idx": 11,
+                  "dst_seq_idx": 10,
+                  "cosine_sim": 0.4405170679092407
+                }
+              ]
+            },
+            "tokens_lcf_merge_roles_before_merge": [
+              {
+                "idx": 0,
+                "token": "[CLS]",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "protected_cls"
+              },
+              {
+                "idx": 1,
+                "token": "the",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 2,
+                "token": "[",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 3,
+                "token": "b",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 4,
+                "token": "-",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 5,
+                "token": "as",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 6,
+                "token": "##p",
+                "lcf_scalar": 0.9166666865348816,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 7,
+                "token": "]",
+                "lcf_scalar": 0.8333333134651184,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 8,
+                "token": "pizza",
+                "lcf_scalar": 0.75,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 9,
+                "token": "[",
+                "lcf_scalar": 0.6666666865348816,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 10,
+                "token": "e",
+                "lcf_scalar": 0.5833333134651184,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 11,
+                "token": "-",
+                "lcf_scalar": 0.5,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 12,
+                "token": "as",
+                "lcf_scalar": 0.0,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 13,
+                "token": "##p",
+                "lcf_scalar": 0.0,
+                "merge_role_before_this_step": "protected_sep"
+              }
+            ],
+            "tokens_lcf_after_merge_packed": [
+              {
+                "idx": 0,
+                "token": "[CLS]",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 1,
+                "token": "(the∥-)",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 2,
+                "token": "[",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 3,
+                "token": "b",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 4,
+                "token": "(as∥pizza)",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 5,
+                "token": "(]∥##p)",
+                "lcf_scalar_after_step": 0.9166666865348816
+              },
+              {
+                "idx": 6,
+                "token": "[",
+                "lcf_scalar_after_step": 0.6666666865348816
+              },
+              {
+                "idx": 7,
+                "token": "(-∥e)",
+                "lcf_scalar_after_step": 0.5833333134651184
+              },
+              {
+                "idx": 8,
+                "token": "as",
+                "lcf_scalar_after_step": 0.0
+              },
+              {
+                "idx": 9,
+                "token": "##p",
+                "lcf_scalar_after_step": 0.0
+              }
+            ],
+            "token_texts_before": [
+              "[CLS]",
+              "the",
+              "[",
+              "b",
+              "-",
+              "as",
+              "##p",
+              "]",
+              "pizza",
+              "[",
+              "e",
+              "-",
+              "as",
+              "##p"
+            ],
+            "token_texts_after": [
+              "[CLS]",
+              "(the∥-)",
+              "[",
+              "b",
+              "(as∥pizza)",
+              "(]∥##p)",
+              "[",
+              "(-∥e)",
+              "as",
+              "##p"
+            ],
+            "pairs": [
+              [
+                1,
+                4
+              ],
+              [
+                5,
+                8
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                11,
+                10
+              ]
+            ],
+            "pairs_text": [
+              {
+                "src_idx": 1,
+                "dst_idx": 4,
+                "src": "the",
+                "dst": "-",
+                "pair_cosine_sim": 0.8717132210731506,
+                "merged_display": "(the∥-)"
+              },
+              {
+                "src_idx": 5,
+                "dst_idx": 8,
+                "src": "as",
+                "dst": "pizza",
+                "pair_cosine_sim": 0.8784588575363159,
+                "merged_display": "(as∥pizza)"
+              },
+              {
+                "src_idx": 7,
+                "dst_idx": 6,
+                "src": "]",
+                "dst": "##p",
+                "pair_cosine_sim": 0.8887079954147339,
+                "merged_display": "(]∥##p)"
+              },
+              {
+                "src_idx": 11,
+                "dst_idx": 10,
+                "src": "-",
+                "dst": "e",
+                "pair_cosine_sim": 0.4405170679092407,
+                "merged_display": "(-∥e)"
+              }
+            ]
+          },
+          {
+            "step": 1,
+            "skipped": false,
+            "length_before": 10,
+            "length_after": 7,
+            "merge_pair_selection": {
+              "status": "ok",
+              "protect_left_positions": 1,
+              "protect_right_positions": 1,
+              "interior_candidates_ordered": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8
+              ],
+              "per_token_merge_role_before_step": [
+                "protected_cls",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "merge_side_A",
+                "merge_side_B",
+                "protected_sep"
+              ],
+              "pair_cosine_similarity": [
+                {
+                  "src_seq_idx": 1,
+                  "dst_seq_idx": 2,
+                  "cosine_sim": 0.8429473638534546
+                },
+                {
+                  "src_seq_idx": 5,
+                  "dst_seq_idx": 4,
+                  "cosine_sim": 0.9069130420684814
+                },
+                {
+                  "src_seq_idx": 7,
+                  "dst_seq_idx": 8,
+                  "cosine_sim": 0.7339325547218323
+                }
+              ]
+            },
+            "tokens_lcf_merge_roles_before_merge": [
+              {
+                "idx": 0,
+                "token": "[CLS]",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "protected_cls"
+              },
+              {
+                "idx": 1,
+                "token": "(the∥-)",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 2,
+                "token": "[",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 3,
+                "token": "b",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 4,
+                "token": "(as∥pizza)",
+                "lcf_scalar": 1.0,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 5,
+                "token": "(]∥##p)",
+                "lcf_scalar": 0.9166666865348816,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 6,
+                "token": "[",
+                "lcf_scalar": 0.6666666865348816,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 7,
+                "token": "(-∥e)",
+                "lcf_scalar": 0.5833333134651184,
+                "merge_role_before_this_step": "merge_side_A"
+              },
+              {
+                "idx": 8,
+                "token": "as",
+                "lcf_scalar": 0.0,
+                "merge_role_before_this_step": "merge_side_B"
+              },
+              {
+                "idx": 9,
+                "token": "##p",
+                "lcf_scalar": 0.0,
+                "merge_role_before_this_step": "protected_sep"
+              }
+            ],
+            "tokens_lcf_after_merge_packed": [
+              {
+                "idx": 0,
+                "token": "[CLS]",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 1,
+                "token": "((the∥-)∥[)",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 2,
+                "token": "b",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 3,
+                "token": "((]∥##p)∥(as∥pizza))",
+                "lcf_scalar_after_step": 1.0
+              },
+              {
+                "idx": 4,
+                "token": "[",
+                "lcf_scalar_after_step": 0.6666666865348816
+              },
+              {
+                "idx": 5,
+                "token": "((-∥e)∥as)",
+                "lcf_scalar_after_step": 0.5833333134651184
+              },
+              {
+                "idx": 6,
+                "token": "##p",
+                "lcf_scalar_after_step": 0.0
+              }
+            ],
+            "token_texts_before": [
+              "[CLS]",
+              "(the∥-)",
+              "[",
+              "b",
+              "(as∥pizza)",
+              "(]∥##p)",
+              "[",
+              "(-∥e)",
+              "as",
+              "##p"
+            ],
+            "token_texts_after": [
+              "[CLS]",
+              "((the∥-)∥[)",
+              "b",
+              "((]∥##p)∥(as∥pizza))",
+              "[",
+              "((-∥e)∥as)",
+              "##p"
+            ],
+            "pairs": [
+              [
+                1,
+                2
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                7,
+                8
+              ]
+            ],
+            "pairs_text": [
+              {
+                "src_idx": 1,
+                "dst_idx": 2,
+                "src": "(the∥-)",
+                "dst": "[",
+                "pair_cosine_sim": 0.8429473638534546,
+                "merged_display": "((the∥-)∥[)"
+              },
+              {
+                "src_idx": 5,
+                "dst_idx": 4,
+                "src": "(]∥##p)",
+                "dst": "(as∥pizza)",
+                "pair_cosine_sim": 0.9069130420684814,
+                "merged_display": "((]∥##p)∥(as∥pizza))"
+              },
+              {
+                "src_idx": 7,
+                "dst_idx": 8,
+                "src": "(-∥e)",
+                "dst": "as",
+                "pair_cosine_sim": 0.7339325547218323,
+                "merged_display": "((-∥e)∥as)"
+              }
+            ]
+          }
+        ],
+        "token_texts_after_merges_pre_resize": [
+          "[CLS]",
+          "((the∥-)∥[)",
+          "b",
+          "((]∥##p)∥(as∥pizza))",
+          "[",
+          "((-∥e)∥as)",
+          "##p"
+        ]
+      }
+    ]
+  }
+}
