@@ -1,9 +1,20 @@
 # -*- coding: utf-8 -*-
-"""Token merging (ToMe-style) for 1D token sequences after a Transformer encoder.
+"""Token merging for 1D token sequences after a Transformer encoder.
 
-Adapted from "Token Merging: Your ViT But Faster" (CVPR 2023) — bipartite matching
-on two token subsets, merge by averaging, pack valid tokens left, then resize back
-to fixed length so downstream APC (LCF + SA) stays shape-compatible.
+Two merge strategies are available (controlled by ToMeSequenceMerger.merge_strategy):
+
+  "bipartite"  (default, ToMe CVPR 2023)
+      Divide interior tokens into two alternating groups A and B.
+      Each A-token greedily picks the most similar B-token (cosine).
+      All pairs are found simultaneously then merged in one shot.
+
+  "sequential_local"
+      Scan tokens left → right. At each active token i, compare
+      cosine similarity with the nearest active left and right neighbour
+      (within the mergeable zone, excluding protected CLS/SEP).
+          sim_left  > sim_right  →  token[i] folds INTO left  (left updated, i removed)
+          sim_right ≥ sim_left   →  right neighbour folds INTO token[i] (right removed)
+      One pass = one merge step; repeat for num_merge_steps rounds.
 
 Use ``forward_with_trace`` for thesis figures (lengths, rounds, pairs).
 """
@@ -168,6 +179,129 @@ def _merge_pairs(
     return packed_x, packed_lcf, keep
 
 
+def _sequential_neighbor_merge(
+    x: torch.Tensor,        # (n, d)  – valid tokens only, no batch padding
+    lcf: torch.Tensor,      # (n,)    – LCF flags (1.0 = aspect position)
+    protect_left: int,      # number of protected tokens on the left  (CLS)
+    protect_right: int,     # number of protected tokens on the right (SEP)
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[Tuple[int, int]]]:
+    """Sequential left-to-right local-neighbour merge (one pass).
+
+    Scans active tokens from left to right (excluding protected CLS / SEP).
+    At each active token i:
+
+        sim_left  = cosine( x[i], nearest active left  neighbour in mergeable zone )
+        sim_right = cosine( x[i], nearest active right neighbour in mergeable zone )
+
+        sim_left  > sim_right  →  token[i] folds INTO left  neighbour:
+                                    x[left]  ← avg(x[left], x[i])
+                                    lcf[left] ← max(lcf[left], lcf[i])
+                                    i is removed
+        sim_right ≥ sim_left   →  right neighbour folds INTO token[i]:
+                                    x[i]    ← avg(x[i], x[right])
+                                    lcf[i]  ← max(lcf[i], lcf[right])
+                                    right is removed
+
+    Two constraints to keep the merge conservative and information-preserving:
+
+    1. **One-to-one per destination**: once a token has been used as a merge
+       destination (received another token), it is marked as "full" for this pass
+       and cannot be a destination again.  This prevents one token from absorbing
+       many neighbours in a single pass (which would over-compress and distort).
+
+    2. **Mid-SEP protection**: in SPC tokenisation the sequence is
+       [CLS] text [SEP] aspect [SEP].  The first [SEP] (between text and aspect
+       segments) is NOT the last token, so protect_right alone does not cover it.
+       Any token whose LCF flag == 0 AND whose immediate right neighbour has
+       LCF flag == 1 is treated as the mid-SEP boundary and excluded from merging
+       (it is never removed; it may still receive merges from its left).
+
+    LCF flags are combined by max so aspect-position signal is never lost.
+
+    Returns:
+        merged_x   : (n', d)     n' = n - number_of_merges
+        merged_lcf : (n',)
+        keep_mask  : (n,) bool   True = position kept in output
+        pairs      : list of (removed_idx, kept_idx)  for trace logging
+    """
+    n, d = x.shape
+    device = x.device
+
+    x_w   = x.clone()
+    lcf_w = lcf.clone()
+    removed  = torch.zeros(n, dtype=torch.bool,  device=device)
+    dst_full = torch.zeros(n, dtype=torch.bool,  device=device)  # already received a merge
+    pairs: List[Tuple[int, int]] = []
+
+    end = n - protect_right          # first non-mergeable index on the right
+
+    # ── Detect mid-SEP boundary (segment-A / segment-B separator in SPC) ──────
+    # Position j is "boundary" if lcf[j]==0 and lcf[j+1]==1 (first aspect token).
+    # We mark such positions as protected sources (cannot be removed).
+    mid_sep = torch.zeros(n, dtype=torch.bool, device=device)
+    for j in range(protect_left, end - 1):
+        if lcf_w[j].item() < 0.5 and lcf_w[j + 1].item() > 0.5:
+            mid_sep[j] = True
+
+    i = protect_left
+    while i < end:
+        if removed[i] or mid_sep[i]:
+            i += 1
+            continue
+
+        # ── Nearest active left neighbour within mergeable zone ───────────────
+        left = i - 1
+        while left >= protect_left and (removed[left] or mid_sep[left]):
+            left -= 1
+        has_left = (
+            left >= protect_left
+            and not removed[left]
+            and not dst_full[left]   # destination must not be already full
+        )
+
+        # ── Nearest active right neighbour within mergeable zone ──────────────
+        right = i + 1
+        while right < end and (removed[right] or mid_sep[right]):
+            right += 1
+        has_right = right < end and not removed[right] and not mid_sep[right]
+
+        if not has_left and not has_right:
+            i += 1
+            continue
+
+        # ── Cosine similarities ───────────────────────────────────────────────
+        sim_left  = -2.0
+        sim_right = -2.0
+        if has_left:
+            sim_left  = float(
+                F.cosine_similarity(x_w[i].unsqueeze(0), x_w[left].unsqueeze(0)).item()
+            )
+        if has_right:
+            sim_right = float(
+                F.cosine_similarity(x_w[i].unsqueeze(0), x_w[right].unsqueeze(0)).item()
+            )
+
+        if has_left and sim_left > sim_right:
+            # token[i] folds into left: average replaces left, i is removed
+            x_w[left]   = 0.5 * (x_w[left]   + x_w[i])
+            lcf_w[left] = torch.maximum(lcf_w[left], lcf_w[i])
+            removed[i]  = True
+            dst_full[left] = True     # left cannot receive another merge this pass
+            pairs.append((int(i), int(left)))
+        elif has_right:
+            # right folds into token[i]: average replaces i, right is removed
+            x_w[i]         = 0.5 * (x_w[i]    + x_w[right])
+            lcf_w[i]       = torch.maximum(lcf_w[i], lcf_w[right])
+            removed[right] = True
+            dst_full[i]    = True     # i cannot receive another merge this pass
+            pairs.append((int(right), int(i)))
+
+        i += 1
+
+    keep_mask = ~removed
+    return x_w[keep_mask], lcf_w[keep_mask], keep_mask, pairs
+
+
 def _resize_to_length(
     x: torch.Tensor,
     lcf: torch.Tensor,
@@ -188,18 +322,50 @@ def _resize_to_length(
 
 
 class ToMeSequenceMerger(nn.Module):
-    """Apply several bipartite merge steps per sentence, then resize to original length."""
+    """Apply several bipartite merge steps per sentence.
+
+    resize=True  (default): interpolate merged sequence back to original length L.
+                            Output shape (B, L, H) — downstream layers unchanged.
+                            Measures representation quality of merging.
+
+    resize=False:           keep the shorter merged sequence (length L' ≤ L).
+                            Pad batch to L'_max across the batch, return new
+                            attention mask so SA layers see fewer real tokens.
+                            Measures both representation quality AND inference speed.
+    """
 
     def __init__(
         self,
         num_merge_steps: int = 2,
         protect_cls: bool = True,
         protect_sep: bool = True,
+        resize: bool = True,
+        merge_strategy: str = "bipartite",
     ):
+        """
+        Args:
+            num_merge_steps  : number of merge passes (each reduces seq length by ~half).
+            protect_cls      : never remove or absorb the CLS token [0].
+            protect_sep      : never remove or absorb the SEP token [-1].
+            resize           : if True, interpolate back to original L after merging;
+                               if False, keep compact sequence of length L' ≤ L.
+            merge_strategy   : "bipartite"       – ToMe (CVPR 2023) alternating-group
+                                                    cosine matching (default).
+                               "sequential_local" – left-to-right nearest-neighbour:
+                                                    each token merges toward its more
+                                                    similar neighbour (left or right).
+        """
         super().__init__()
-        self.num_merge_steps = num_merge_steps
-        self.protect_cls = protect_cls
-        self.protect_sep = protect_sep
+        if merge_strategy not in ("bipartite", "sequential_local"):
+            raise ValueError(
+                f"merge_strategy must be 'bipartite' or 'sequential_local', "
+                f"got {merge_strategy!r}"
+            )
+        self.num_merge_steps  = num_merge_steps
+        self.protect_cls      = protect_cls
+        self.protect_sep      = protect_sep
+        self.resize           = resize
+        self.merge_strategy   = merge_strategy
 
     def forward(
         self,
@@ -208,7 +374,7 @@ class ToMeSequenceMerger(nn.Module):
         attention_mask: torch.Tensor,
         return_trace: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[List[Dict[str, Any]]]]:
-        trace_out, merged_h, merged_lcf = self.forward_with_trace(
+        trace_out, merged_h, merged_lcf, _ = self.forward_with_trace(
             hidden, lcf_vec, attention_mask
         )
         if return_trace:
@@ -220,8 +386,13 @@ class ToMeSequenceMerger(nn.Module):
         hidden: torch.Tensor,
         lcf_vec: torch.Tensor,
         attention_mask: torch.Tensor,
-    ) -> Tuple[List[Dict[str, Any]], torch.Tensor, torch.Tensor]:
-        """Returns (trace, hidden_out, lcf_out) with same shape as inputs."""
+    ) -> Tuple[List[Dict[str, Any]], torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Run ToMe and return (trace, hidden_out, lcf_out, new_attn_mask).
+
+        new_attn_mask:
+            None         when resize=True  — output shape (B, L, H), same as input.
+            (B, L'_max)  when resize=False — output shape (B, L'_max, H), L'_max ≤ L.
+        """
         B, L, D = hidden.shape
         device = hidden.device
         dtype = hidden.dtype
@@ -231,8 +402,9 @@ class ToMeSequenceMerger(nn.Module):
         else:
             lcf_exp = lcf_vec.squeeze(-1)
 
-        out_h = []
-        out_l = []
+        # Per-sample merged tensors (variable length when resize=False)
+        out_h: List[torch.Tensor] = []
+        out_l: List[torch.Tensor] = []
         batch_trace: List[Dict[str, Any]] = []
 
         for b in range(B):
@@ -262,36 +434,55 @@ class ToMeSequenceMerger(nn.Module):
 
             for step in range(self.num_merge_steps):
                 before = x_seg.size(0)
-                src, dst, pair_meta = _bipartite_pairs(x_seg, m_seg, prot_l, prot_r)
-                if src is None:
-                    seq_trace["steps"].append(
-                        {
-                            "step": step,
-                            "skipped": True,
-                            "reason": "no_pairs",
-                            "merge_pair_selection": pair_meta,
-                        }
-                    )
-                    break
-
-                pairs = torch.stack([src, dst], dim=1).tolist()
-
-                # ===== DEBUG BEFORE =====
-                x_before = x_seg.clone()
+                x_before   = x_seg.clone()
                 lcf_before = lf_seg.clone()
 
-                # merge
-                x_seg, lf_seg, keep_mask = _merge_pairs(
-                    x_seg,
-                    lf_seg,
-                    src,
-                    dst,
-                )
+                if self.merge_strategy == "bipartite":
+                    # ── Bipartite cosine matching (ToMe CVPR 2023) ────────────
+                    src, dst, pair_meta = _bipartite_pairs(
+                        x_seg, m_seg, prot_l, prot_r
+                    )
+                    if src is None:
+                        seq_trace["steps"].append(
+                            {
+                                "step": step,
+                                "skipped": True,
+                                "reason": "no_pairs",
+                                "strategy": "bipartite",
+                                "merge_pair_selection": pair_meta,
+                            }
+                        )
+                        break
+                    pairs_list = torch.stack([src, dst], dim=1).tolist()
+                    x_seg, lf_seg, keep_mask = _merge_pairs(
+                        x_seg, lf_seg, src, dst
+                    )
+                    pair_meta_log = pair_meta
 
-                # ===== DEBUG AFTER =====
-                x_after = x_seg.clone()
+                else:
+                    # ── Sequential local-neighbour merge ──────────────────────
+                    x_seg, lf_seg, keep_mask, raw_pairs = _sequential_neighbor_merge(
+                        x_seg, lf_seg, prot_l, prot_r
+                    )
+                    if not raw_pairs:
+                        seq_trace["steps"].append(
+                            {
+                                "step": step,
+                                "skipped": True,
+                                "reason": "no_pairs",
+                                "strategy": "sequential_local",
+                            }
+                        )
+                        break
+                    pairs_list = raw_pairs        # list of (removed, kept) tuples
+                    pair_meta_log = {
+                        "status": "ok",
+                        "strategy": "sequential_local",
+                        "num_pairs": len(raw_pairs),
+                    }
+
+                x_after  = x_seg.clone()
                 lcf_after = lf_seg.clone()
-
                 m_seg = torch.ones(x_seg.size(0), device=device, dtype=dtype)
                 after = x_seg.size(0)
 
@@ -299,37 +490,60 @@ class ToMeSequenceMerger(nn.Module):
                     {
                         "step": step,
                         "skipped": False,
-
-                        # shape info
+                        "strategy": self.merge_strategy,
                         "length_before": before,
                         "length_after": after,
-
-                        # merge pairs
-                        "pairs": pairs,
-                        "merge_pair_selection": pair_meta,
-
-                        # removed positions
+                        "pairs": pairs_list,
+                        "merge_pair_selection": pair_meta_log,
                         "keep_mask": keep_mask.detach().cpu().tolist(),
-
-                        # embedding preview
                         "x_before_preview": _tensor_preview(x_before),
                         "x_after_preview": _tensor_preview(x_after),
-
-                        # lcf preview
                         "lcf_before": lcf_before.detach().cpu().tolist(),
                         "lcf_after": lcf_after.detach().cpu().tolist(),
                     }
                 )
 
-            x_fixed, lf_fixed = _resize_to_length(x_seg, lf_seg, L)
-            row_h = x_fixed
-            row_l = lf_fixed
-            out_h.append(row_h)
-            out_l.append(row_l)
-            seq_trace["length_after_resize"] = int(L)
+            # ── resize=True: interpolate back to original L ──────────────────
+            if self.resize:
+                x_fixed, lf_fixed = _resize_to_length(x_seg, lf_seg, L)
+                seq_trace["length_out"] = int(L)
+                seq_trace["resize_mode"] = "interpolated_back"
+            else:
+                # resize=False: keep the shorter merged sequence
+                x_fixed, lf_fixed = x_seg, lf_seg
+                seq_trace["length_out"] = int(x_seg.size(0))
+                seq_trace["resize_mode"] = "compact"
+
+            out_h.append(x_fixed)
+            out_l.append(lf_fixed)
             batch_trace.append(seq_trace)
 
-        merged_h = torch.stack(out_h, dim=0)
-        merged_lcf = torch.stack(out_l, dim=0)
-        return batch_trace, merged_h, merged_lcf
+        # ── Assemble batch ────────────────────────────────────────────────────
+        if self.resize:
+            # All samples have length L — stack directly
+            merged_h   = torch.stack(out_h, dim=0)     # (B, L, H)
+            merged_lcf = torch.stack(out_l, dim=0)     # (B, L)
+            new_attn_mask: Optional[torch.Tensor] = None
+        else:
+            # Samples have different lengths — pad to L'_max
+            L_prime = max(h.size(0) for h in out_h)
+            padded_h   = []
+            padded_lcf = []
+            new_mask_rows = []
+            for h, lf in zip(out_h, out_l):
+                n = h.size(0)
+                pad = L_prime - n
+                if pad > 0:
+                    h  = F.pad(h,  (0, 0, 0, pad))  # (L_prime, H)
+                    lf = F.pad(lf, (0, pad))          # (L_prime,)
+                m = torch.zeros(L_prime, device=device, dtype=dtype)
+                m[:n] = 1.0
+                padded_h.append(h)
+                padded_lcf.append(lf)
+                new_mask_rows.append(m)
+            merged_h      = torch.stack(padded_h,   dim=0)  # (B, L_prime, H)
+            merged_lcf    = torch.stack(padded_lcf, dim=0)  # (B, L_prime)
+            new_attn_mask = torch.stack(new_mask_rows, dim=0)  # (B, L_prime)
+
+        return batch_trace, merged_h, merged_lcf, new_attn_mask
 
