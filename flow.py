@@ -88,7 +88,7 @@ def run_pipeline(input_json, *, trace_txt: Optional[str] = None):
     # =========================
     # STEP 4: APPLY TOME
     # =========================
-    trace, merged_h, merged_lcf = tome.forward_with_trace(
+    trace, merged_h, merged_lcf, _ = tome.forward_with_trace(
         hidden,
         lcf_vec,
         attention_mask
