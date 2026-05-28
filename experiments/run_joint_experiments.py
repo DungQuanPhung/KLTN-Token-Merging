@@ -81,8 +81,8 @@ SUPPLEMENT_FILES: List[str] = [
 
 PRETRAINED_BERT  = "bert-base-uncased"
 SEED             = 42
-NUM_EPOCHS       = 3
-PATIENCE         = 3
+NUM_EPOCHS       = 15
+PATIENCE         = 4
 BATCH_SIZE       = 16
 LR               = 2e-5
 MAX_SEQ_LEN      = 128
@@ -104,6 +104,10 @@ CONFIGS: List[Tuple[bool, bool, bool, str, str, str]] = [
     (True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
     (False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
     (False, True,  False, "sequential_local", "Seq (compact)",         "seq_compact"),
+    (True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
+    (True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
+    (False, True,  True,  "attention_weighted", "Attn (resize)",       "attn_resize"),
+    (False, True,  False, "attention_weighted", "Attn (compact)",      "attn_compact"),
 ]
 
 

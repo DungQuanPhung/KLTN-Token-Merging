@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Token merging for 1D token sequences after a Transformer encoder.
 
-Two merge strategies are available (controlled by ToMeSequenceMerger.merge_strategy):
+Three merge strategies are available (controlled by ToMeSequenceMerger.merge_strategy):
 
   "bipartite"  (default, ToMe CVPR 2023)
       Divide interior tokens into two alternating groups A and B.
@@ -15,6 +15,12 @@ Two merge strategies are available (controlled by ToMeSequenceMerger.merge_strat
           sim_left  > sim_right  →  token[i] folds INTO left  (left updated, i removed)
           sim_right ≥ sim_left   →  right neighbour folds INTO token[i] (right removed)
       One pass = one merge step; repeat for num_merge_steps rounds.
+
+  "attention_weighted"
+      Rank tokens by attention weight (ascending).
+      Iteratively merge lowest-attention tokens with their most similar neighbor.
+      High-attention and aspect-position tokens (LCF=1) are protected.
+      Merges most "unimportant" tokens first while preserving crucial signal.
 
 Use ``forward_with_trace`` for thesis figures (lengths, rounds, pairs).
 """
@@ -179,6 +185,97 @@ def _merge_pairs(
     return packed_x, packed_lcf, keep
 
 
+def _attention_weighted_merge(
+    x: torch.Tensor,        # (n, d)  – valid tokens only
+    lcf: torch.Tensor,      # (n,)    – LCF flags (1.0 = aspect position)
+    attn: torch.Tensor,     # (n,)    – attention weights per token [0,1]
+    protect_left: int,      # CLS protected positions
+    protect_right: int,     # SEP protected positions
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[Tuple[int, int]]]:
+    """Attention-weighted merge: merge lowest-attention tokens with nearest neighbors.
+
+    Tokens are ranked by attention weight (ascending). At each step:
+    1. Find lowest-attention token not yet merged & not protected
+    2. Find its nearest neighbor (by cosine similarity) also not protected
+    3. Merge them: keep neighbor, remove low-attention token
+    4. Repeat until target reached or no mergeable pairs remain
+
+    Protection rules:
+    - CLS/SEP (protect_left/protect_right) never removed
+    - Aspect tokens (LCF=1) get higher priority (never removed unless necessary)
+    - High-attention tokens (top quartile) are protected
+
+    Returns (merged_x, merged_lcf, keep_mask, pairs)
+    """
+    n, d = x.shape
+    device = x.device
+
+    x_w   = x.clone()
+    lcf_w = lcf.clone()
+    attn_w = attn.clone()
+    removed = torch.zeros(n, dtype=torch.bool, device=device)
+    pairs: List[Tuple[int, int]] = []
+
+    end = n - protect_right
+
+    # ── Compute protection mask ───────────────────────────────────────────────
+    protected = torch.zeros(n, dtype=torch.bool, device=device)
+    if protect_left > 0:
+        protected[:protect_left] = True
+    if protect_right > 0:
+        protected[-protect_right:] = True
+
+    # Aspect tokens (LCF=1) are highly protected (should not be removed)
+    is_aspect = lcf > 0.5
+
+    # High-attention tokens (top 25%) are protected
+    attn_threshold = torch.quantile(attn_w, 0.75)
+    is_high_attn = attn_w >= attn_threshold
+
+    # ── Iteratively merge lowest-attention tokens ────────────────────────────
+    metric = _normalize(x_w)
+    max_merges = (n - protect_left - protect_right) // 2  # limit merges
+    merges_done = 0
+
+    while merges_done < max_merges:
+        # Find lowest-attention non-removed, non-protected token
+        candidate_mask = ~removed & ~protected & ~is_aspect
+        if not candidate_mask.any():
+            break
+
+        # Get lowest attention among candidates
+        attn_candidates = attn_w.clone()
+        attn_candidates[~candidate_mask] = float('inf')
+        i = attn_candidates.argmin().item()
+
+        # Find nearest neighbor (highest cosine similarity) not removed, not aspect
+        neighbor_mask = ~removed & ~is_aspect
+        neighbor_mask[i] = False  # exclude self
+        if not neighbor_mask.any():
+            break
+
+        # Compute similarity with all potential neighbors
+        sims = (metric[i] * metric).sum(dim=-1)  # (n,)
+        sims[~neighbor_mask] = -2.0
+        j = sims.argmax().item()
+
+        if sims[j].item() < -1.5:  # no valid neighbor
+            break
+
+        # Merge i into j: i removed, j updated
+        x_w[j] = 0.5 * (x_w[j] + x_w[i])
+        lcf_w[j] = torch.maximum(lcf_w[j], lcf_w[i])
+        removed[i] = True
+        pairs.append((int(i), int(j)))
+        merges_done += 1
+
+        # Update metric for next iteration
+        metric = _normalize(x_w)
+
+    keep_mask = ~removed
+    return x_w[keep_mask], lcf_w[keep_mask], keep_mask, pairs
+
+
 def _sequential_neighbor_merge(
     x: torch.Tensor,        # (n, d)  – valid tokens only, no batch padding
     lcf: torch.Tensor,      # (n,)    – LCF flags (1.0 = aspect position)
@@ -202,19 +299,17 @@ def _sequential_neighbor_merge(
                                     lcf[i]  ← max(lcf[i], lcf[right])
                                     right is removed
 
-    Two constraints to keep the merge conservative and information-preserving:
+    Constraint:
 
-    1. **One-to-one per destination**: once a token has been used as a merge
-       destination (received another token), it is marked as "full" for this pass
-       and cannot be a destination again.  This prevents one token from absorbing
-       many neighbours in a single pass (which would over-compress and distort).
+    **Mid-SEP protection**: in SPC tokenisation the sequence is
+    [CLS] text [SEP] aspect [SEP].  The first [SEP] (between text and aspect
+    segments) is NOT the last token, so protect_right alone does not cover it.
+    Any token whose LCF flag == 0 AND whose immediate right neighbour has
+    LCF flag == 1 is treated as the mid-SEP boundary and excluded from merging
+    (it is never removed; it may still receive merges from its left).
 
-    2. **Mid-SEP protection**: in SPC tokenisation the sequence is
-       [CLS] text [SEP] aspect [SEP].  The first [SEP] (between text and aspect
-       segments) is NOT the last token, so protect_right alone does not cover it.
-       Any token whose LCF flag == 0 AND whose immediate right neighbour has
-       LCF flag == 1 is treated as the mid-SEP boundary and excluded from merging
-       (it is never removed; it may still receive merges from its left).
+    Tokens are allowed to receive multiple merges from different neighbors
+    in a single pass (no one-to-one per destination limit).
 
     LCF flags are combined by max so aspect-position signal is never lost.
 
@@ -230,7 +325,6 @@ def _sequential_neighbor_merge(
     x_w   = x.clone()
     lcf_w = lcf.clone()
     removed  = torch.zeros(n, dtype=torch.bool,  device=device)
-    dst_full = torch.zeros(n, dtype=torch.bool,  device=device)  # already received a merge
     pairs: List[Tuple[int, int]] = []
 
     end = n - protect_right          # first non-mergeable index on the right
@@ -256,7 +350,6 @@ def _sequential_neighbor_merge(
         has_left = (
             left >= protect_left
             and not removed[left]
-            and not dst_full[left]   # destination must not be already full
         )
 
         # ── Nearest active right neighbour within mergeable zone ──────────────
@@ -286,14 +379,12 @@ def _sequential_neighbor_merge(
             x_w[left]   = 0.5 * (x_w[left]   + x_w[i])
             lcf_w[left] = torch.maximum(lcf_w[left], lcf_w[i])
             removed[i]  = True
-            dst_full[left] = True     # left cannot receive another merge this pass
             pairs.append((int(i), int(left)))
         elif has_right:
             # right folds into token[i]: average replaces i, right is removed
             x_w[i]         = 0.5 * (x_w[i]    + x_w[right])
             lcf_w[i]       = torch.maximum(lcf_w[i], lcf_w[right])
             removed[right] = True
-            dst_full[i]    = True     # i cannot receive another merge this pass
             pairs.append((int(right), int(i)))
 
         i += 1
@@ -349,16 +440,18 @@ class ToMeSequenceMerger(nn.Module):
             protect_sep      : never remove or absorb the SEP token [-1].
             resize           : if True, interpolate back to original L after merging;
                                if False, keep compact sequence of length L' ≤ L.
-            merge_strategy   : "bipartite"       – ToMe (CVPR 2023) alternating-group
-                                                    cosine matching (default).
-                               "sequential_local" – left-to-right nearest-neighbour:
-                                                    each token merges toward its more
-                                                    similar neighbour (left or right).
+            merge_strategy   : "bipartite"         – ToMe (CVPR 2023) alternating-group
+                                                     cosine matching (default).
+                               "sequential_local"  – left-to-right nearest-neighbour:
+                                                     each token merges toward its more
+                                                     similar neighbour (left or right).
+                               "attention_weighted" – merge lowest-attention tokens first,
+                                                      protect aspect & high-attention tokens.
         """
         super().__init__()
-        if merge_strategy not in ("bipartite", "sequential_local"):
+        if merge_strategy not in ("bipartite", "sequential_local", "attention_weighted"):
             raise ValueError(
-                f"merge_strategy must be 'bipartite' or 'sequential_local', "
+                f"merge_strategy must be 'bipartite', 'sequential_local', or 'attention_weighted', "
                 f"got {merge_strategy!r}"
             )
         self.num_merge_steps  = num_merge_steps
@@ -373,9 +466,10 @@ class ToMeSequenceMerger(nn.Module):
         lcf_vec: torch.Tensor,
         attention_mask: torch.Tensor,
         return_trace: bool = False,
+        attention_weights: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[List[Dict[str, Any]]]]:
         trace_out, merged_h, merged_lcf, _ = self.forward_with_trace(
-            hidden, lcf_vec, attention_mask
+            hidden, lcf_vec, attention_mask, attention_weights
         )
         if return_trace:
             return merged_h, merged_lcf, trace_out
@@ -386,8 +480,13 @@ class ToMeSequenceMerger(nn.Module):
         hidden: torch.Tensor,
         lcf_vec: torch.Tensor,
         attention_mask: torch.Tensor,
+        attention_weights: Optional[torch.Tensor] = None,
     ) -> Tuple[List[Dict[str, Any]], torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Run ToMe and return (trace, hidden_out, lcf_out, new_attn_mask).
+
+        Args:
+            attention_weights: (B, L) optional per-token attention weights for attention_weighted strategy.
+                              If None, uses uniform weights (attention_weighted falls back to cosine).
 
         new_attn_mask:
             None         when resize=True  — output shape (B, L, H), same as input.
@@ -459,7 +558,7 @@ class ToMeSequenceMerger(nn.Module):
                     )
                     pair_meta_log = pair_meta
 
-                else:
+                elif self.merge_strategy == "sequential_local":
                     # ── Sequential local-neighbour merge ──────────────────────
                     x_seg, lf_seg, keep_mask, raw_pairs = _sequential_neighbor_merge(
                         x_seg, lf_seg, prot_l, prot_r
@@ -478,6 +577,34 @@ class ToMeSequenceMerger(nn.Module):
                     pair_meta_log = {
                         "status": "ok",
                         "strategy": "sequential_local",
+                        "num_pairs": len(raw_pairs),
+                    }
+
+                else:  # attention_weighted
+                    # ── Attention-weighted merge ─────────────────────────────
+                    attn_seg = torch.ones(x_seg.size(0), device=device, dtype=dtype)
+                    if attention_weights is not None and attention_weights.size(0) > b:
+                        attn_full = attention_weights[b].float()
+                        if attn_full.numel() > 0:
+                            attn_seg = attn_full[valid_idx].clone()
+
+                    x_seg, lf_seg, keep_mask, raw_pairs = _attention_weighted_merge(
+                        x_seg, lf_seg, attn_seg, prot_l, prot_r
+                    )
+                    if not raw_pairs:
+                        seq_trace["steps"].append(
+                            {
+                                "step": step,
+                                "skipped": True,
+                                "reason": "no_pairs",
+                                "strategy": "attention_weighted",
+                            }
+                        )
+                        break
+                    pairs_list = raw_pairs        # list of (removed, kept) tuples
+                    pair_meta_log = {
+                        "status": "ok",
+                        "strategy": "attention_weighted",
                         "num_pairs": len(raw_pairs),
                     }
 
