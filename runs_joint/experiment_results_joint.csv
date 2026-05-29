@@ -1,15 +1,17 @@
-label,use_lcf,use_tome,tome_resize,merge_strategy,train_time_sec,best_epoch,sentiment_f1,sentiment_acc,sent_f1_positive,sent_f1_negative,sent_f1_neutral,aspect_cat_f1,cat_f1_AMENITY,cat_f1_BRANDING,cat_f1_EXPERIENCE,cat_f1_FACILITY,cat_f1_LOYALTY,cat_f1_SERVICE
-Joint Baseline,False,False,True,bipartite,1064.5,2,76.34,95.19,97.51,84.44,47.06,84.95,91.28,71.43,79.37,88.32,83.33,96.0
-Joint LCF only,True,False,True,bipartite,1707.97,5,76.97,94.87,97.34,80.95,52.63,88.33,88.28,85.71,78.87,87.13,92.31,97.67
-LCF+Bip (resize),True,True,True,bipartite,1863.45,4,65.9,90.06,94.55,75.56,27.59,86.38,90.91,78.26,72.41,88.78,92.31,95.6
-LCF+Bip (compact),True,True,False,bipartite,1766.6,3,75.59,95.19,97.7,79.07,50.0,88.62,90.28,84.21,78.26,87.8,92.31,98.85
-Bip (resize),False,True,True,bipartite,1767.47,4,70.86,92.95,96.23,80.0,36.36,85.53,92.41,66.67,75.41,89.22,92.31,97.18
-Bip (compact),False,True,False,bipartite,1753.38,5,72.77,94.87,97.35,80.95,40.0,86.52,88.89,75.0,78.26,87.56,92.31,97.11
-LCF+Seq (resize),True,True,True,sequential_local,2012.63,5,75.84,95.19,97.53,82.93,47.06,87.17,90.41,80.0,75.36,87.25,92.31,97.67
-LCF+Seq (compact),True,True,False,sequential_local,2022.26,4,70.17,92.95,96.56,79.17,34.78,84.75,93.15,69.23,67.92,89.76,92.31,96.13
-Seq (resize),False,True,True,sequential_local,2072.79,4,67.9,92.95,96.43,77.27,30.0,85.95,90.91,69.57,77.42,88.35,92.31,97.18
-Seq (compact),False,True,False,sequential_local,2050.29,5,69.12,93.59,96.96,81.82,28.57,88.28,89.36,80.0,81.82,88.46,92.31,97.73
-LCF+Attn (resize),True,True,True,attention_weighted,2057.94,4,73.17,92.95,96.19,83.33,40.0,86.24,88.11,85.71,68.97,87.8,92.31,94.57
-LCF+Attn (compact),True,True,False,attention_weighted,2074.06,3,72.88,94.87,97.52,78.26,42.86,87.57,90.41,75.0,80.0,90.0,92.31,97.73
-Attn (resize),False,True,True,attention_weighted,2044.86,3,73.21,95.19,97.69,84.44,37.5,89.65,90.91,81.82,84.85,89.76,92.31,98.29
-Attn (compact),False,True,False,attention_weighted,2049.55,4,69.39,92.31,96.17,80.0,32.0,83.42,89.51,63.64,75.86,88.04,85.71,97.75
+label,use_lcf,use_tome,tome_resize,merge_strategy,task_weight_sent,task_weight_cat,es_weight_sent,es_weight_cat,train_time_sec,best_epoch,sentiment_f1,sentiment_acc,sent_f1_positive,sent_f1_negative,sent_f1_neutral,aspect_cat_f1,cat_f1_AMENITY,cat_f1_BRANDING,cat_f1_EXPERIENCE,cat_f1_FACILITY,cat_f1_LOYALTY,cat_f1_SERVICE
+Baseline (Sent-focus),False,False,True,bipartite,1.2,0.8,0.6,0.4,627.05,8,72.55,94.87,97.53,77.27,42.86,88.78,90.41,81.82,80.65,89.22,92.31,98.31
+Baseline (Cat-focus),False,False,True,bipartite,0.8,1.2,0.4,0.6,264.58,2,74.2,94.55,97.32,80.85,44.44,86.12,90.2,71.43,79.37,87.96,92.31,95.45
+Baseline (Balanced),False,False,True,bipartite,1.0,1.0,0.5,0.5,451.65,6,70.63,94.55,97.52,79.07,35.29,86.43,91.67,72.73,75.0,89.1,92.31,97.75
+LCF only,True,False,True,bipartite,1.2,0.8,0.6,0.4,706.41,11,71.31,94.23,97.16,73.91,42.86,88.7,87.42,85.71,80.65,88.89,92.31,97.21
+LCF+Bip (resize),True,True,True,bipartite,1.2,0.8,0.6,0.4,757.46,5,81.09,95.51,97.53,79.07,66.67,88.46,89.04,85.71,80.0,86.57,92.31,97.11
+LCF+Bip (compact),True,True,False,bipartite,1.2,0.8,0.6,0.4,729.72,5,73.69,93.91,96.61,80.0,44.44,88.27,86.33,85.71,81.16,86.96,92.31,97.14
+Bip (resize),False,True,True,bipartite,1.2,0.8,0.6,0.4,966.01,7,69.13,93.59,96.8,77.27,33.33,89.54,92.81,81.82,81.82,90.16,92.31,98.31
+Bip (compact),False,True,False,bipartite,1.2,0.8,0.6,0.4,858.08,7,74.55,94.87,97.52,79.07,47.06,89.06,94.59,78.26,81.16,90.36,92.31,97.7
+LCF+Seq (resize),True,True,True,sequential_local,1.2,0.8,0.6,0.4,1792.79,11,76.57,95.83,97.89,81.82,50.0,89.62,89.36,85.71,83.08,89.0,92.31,98.29
+LCF+Seq (compact),True,True,False,sequential_local,1.2,0.8,0.6,0.4,1045.16,5,73.99,93.59,96.59,83.72,41.67,89.07,90.41,85.71,80.0,88.32,92.31,97.67
+Seq (resize),False,True,True,sequential_local,1.2,0.8,0.6,0.4,1307.26,7,75.06,95.83,98.07,80.95,46.15,88.0,92.52,72.73,81.97,90.2,92.31,98.31
+Seq (compact),False,True,False,sequential_local,1.2,0.8,0.6,0.4,1281.27,7,68.78,93.59,96.81,76.19,33.33,89.87,92.62,80.0,85.71,91.46,92.31,97.14
+LCF+Attn (resize),True,True,True,attention_weighted,1.2,0.8,0.6,0.4,1368.38,9,79.73,96.47,98.25,80.95,60.0,88.01,90.07,81.82,78.69,88.0,92.31,97.18
+LCF+Attn (compact),True,True,False,attention_weighted,1.2,0.8,0.6,0.4,1500.66,11,71.8,94.23,96.99,75.56,42.86,87.44,91.78,81.82,73.02,89.11,92.31,96.63
+Attn (resize),False,True,True,attention_weighted,1.2,0.8,0.6,0.4,1183.62,7,74.94,95.19,97.54,77.27,50.0,86.7,89.8,76.19,76.19,89.11,92.31,96.63
+Attn (compact),False,True,False,attention_weighted,1.2,0.8,0.6,0.4,998.53,6,73.21,95.19,97.71,79.07,42.86,86.62,90.14,76.19,75.86,88.57,92.31,96.67

@@ -88,18 +88,34 @@ LR               = 2e-5
 MAX_SEQ_LEN      = 128
 DROPOUT          = 0.1
 NUM_HEADS        = 8
-TOME_MERGE_STEPS = 2
+TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
+# Default loss and early stopping weights
+DEFAULT_TASK_WEIGHT_SENT = 1.2
+DEFAULT_TASK_WEIGHT_CAT  = 0.8
+DEFAULT_ES_WEIGHT_SENT   = 0.6  # For early stopping validation metric
+DEFAULT_ES_WEIGHT_CAT    = 0.4
+
+# Override weights per config (task_weight_sent loss, task_weight_cat, es_weight_sent, es_weight_cat)
+WEIGHT_OVERRIDES = {
+    "baseline_sent_focus": (1.2, 0.8, 0.6, 0.4),  # Emphasize sentiment
+    "baseline_cat_focus":  (0.8, 1.2, 0.4, 0.6),  # Emphasize category
+    "baseline_balanced":   (1.0, 1.0, 0.5, 0.5),  # Balanced
+}
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # (use_lcf, use_tome, tome_resize, merge_strategy, display_name, short_id)
 CONFIGS: List[Tuple[bool, bool, bool, str, str, str]] = [
-    (False, False, True,  "bipartite",        "Joint Baseline",        "baseline"),
-    (True,  False, True,  "bipartite",        "Joint LCF only",        "lcf_only"),
-    (True,  True,  True,  "bipartite",        "LCF+Bip (resize)",      "lcf_bip_resize"),
-    (True,  True,  False, "bipartite",        "LCF+Bip (compact)",     "lcf_bip_compact"),
-    (False, True,  True,  "bipartite",        "Bip (resize)",          "bip_resize"),
-    (False, True,  False, "bipartite",        "Bip (compact)",         "bip_compact"),
+    # Baseline with different loss/ES weights
+    (False, False, True, "bipartite", "Baseline (Sent-focus)", "baseline_sent_focus"),
+    (False, False, True, "bipartite", "Baseline (Cat-focus)",  "baseline_cat_focus"),
+    (False, False, True, "bipartite", "Baseline (Balanced)",   "baseline_balanced"),
+    # Other models (use default weights)
+    (True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
+    (True,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
+    (True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
+    (False, True,  True,  "bipartite", "Bip (resize)",          "bip_resize"),
+    (False, True,  False, "bipartite", "Bip (compact)",         "bip_compact"),
     (True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
     (True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
     (False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
@@ -119,6 +135,15 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def get_weights_for_config(short_id: str) -> Tuple[float, float, float, float]:
+    """Get task and ES weights for a config. Returns (task_w_sent, task_w_cat, es_w_sent, es_w_cat)."""
+    if short_id in WEIGHT_OVERRIDES:
+        return WEIGHT_OVERRIDES[short_id]
+    else:
+        return (DEFAULT_TASK_WEIGHT_SENT, DEFAULT_TASK_WEIGHT_CAT, 
+                DEFAULT_ES_WEIGHT_SENT, DEFAULT_ES_WEIGHT_CAT)
 
 
 def compute_sentiment_class_weights(dataset: ApcFileDataset) -> torch.Tensor:
@@ -155,6 +180,9 @@ def compute_category_class_weights(
         print(f"{id2cat[idx]}={weights[idx]:.3f}", end="  ")
     print()
     return weights.to(DEVICE)
+
+
+
 
 
 # ─── Evaluation ───────────────────────────────────────────────────────────────
@@ -211,6 +239,10 @@ def train_joint(
     use_tome:       bool,
     tome_resize:    bool,
     merge_strategy: str,
+    task_weight_sent: float,
+    task_weight_cat: float,
+    es_weight_sent: float,
+    es_weight_cat: float,
     short_id:       str,
     train_ds:       ApcFileDataset,   # main + supplement
     dev_ds:         ApcFileDataset,
@@ -249,6 +281,7 @@ def train_joint(
     ).to(DEVICE)
 
     optimiser = torch.optim.AdamW(model.parameters(), lr=LR)
+    scaler = torch.amp.GradScaler("cuda", enabled=USE_MIXED_PRECISION and DEVICE.type == "cuda")
 
     sent_weights   = compute_sentiment_class_weights(train_ds)
     sent_criterion = nn.CrossEntropyLoss(weight=sent_weights)
@@ -277,36 +310,44 @@ def train_joint(
             y_s  = batch["sentiment_label"].to(DEVICE)
             y_c  = batch["aspect_cat_label"].to(DEVICE)
 
-            out = model(ids, attn, lcf)
+            with torch.amp.autocast("cuda", enabled=USE_MIXED_PRECISION and DEVICE.type == "cuda"):
+                out = model(ids, attn, lcf)
 
-            # Sentiment: ALL samples (main + supplement)
-            sent_loss = sent_criterion(out["sentiment_logits"], y_s)
+                # Sentiment: ALL samples (main + supplement)
+                sent_loss = sent_criterion(out["sentiment_logits"], y_s)
 
-            # Category: main samples ONLY
-            main_mask = ~batch["is_supplement"].to(DEVICE)
-            cat_loss  = (
-                cat_criterion(out["aspect_cat_logits"][main_mask], y_c[main_mask])
-                if main_mask.any() else torch.tensor(0.0, device=DEVICE)
-            )
+                # Category: main samples ONLY
+                main_mask = ~batch["is_supplement"].to(DEVICE)
+                cat_loss  = (
+                    cat_criterion(out["aspect_cat_logits"][main_mask], y_c[main_mask])
+                    if main_mask.any() else torch.tensor(0.0, device=DEVICE)
+                )
 
-            loss = sent_loss + cat_loss
+                # Weighted combination of losses
+                loss = task_weight_sent * sent_loss + task_weight_cat * cat_loss
+
             optimiser.zero_grad()
-            loss.backward()
-            optimiser.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimiser)
+            scaler.update()
             total_loss += loss.item()
 
         avg_loss = total_loss / max(len(train_loader), 1)
         dev_m    = evaluate(model, dev_loader, sent_criterion, cat_criterion)
+
+        # Combined F1 for early stopping based on ES weights
+        dev_combined_f1 = es_weight_sent * dev_m["sentiment_f1"] + es_weight_cat * dev_m["aspect_cat_f1"]
 
         print(
             f"    [{short_id}] epoch {epoch:2d}/{NUM_EPOCHS}"
             f"  train_loss={avg_loss:.4f}"
             f"  dev_sent_f1={dev_m['sentiment_f1']:.1f}%"
             f"  dev_cat_f1={dev_m['aspect_cat_f1']:.1f}%"
+            f"  dev_combined_f1={dev_combined_f1:.1f}%"
         )
 
-        if dev_m["sentiment_f1"] > best_dev_f1 + 0.01:
-            best_dev_f1 = dev_m["sentiment_f1"]
+        if dev_combined_f1 > best_dev_f1 + 0.01:
+            best_dev_f1 = dev_combined_f1
             best_epoch  = epoch
             no_improve  = 0
             best_state  = copy.deepcopy(model.state_dict())
@@ -385,6 +426,7 @@ def print_summary_table(
     print(
         f"  Seed: {SEED}  MaxEpochs: {NUM_EPOCHS}  Patience: {PATIENCE}"
         f"  Batch: {BATCH_SIZE}  LR: {LR}  Device: {DEVICE}"
+        f"  UseSupp: True  UseWeights: True"
     )
 
     # ── Overall table ─────────────────────────────────────────────────────────
@@ -509,12 +551,17 @@ def main() -> None:
     print(f"{'═' * 70}")
 
     for use_lcf, use_tome, tome_resize, merge_strategy, label, short_id in CONFIGS:
+        # Get weights for this config
+        task_weight_sent, task_weight_cat, es_weight_sent, es_weight_cat = get_weights_for_config(short_id)
+        
         strategy_tag = merge_strategy if use_tome else "—"
         resize_tag   = ("resize" if tome_resize else "compact") if use_tome else "—"
         print(f"\n{'─' * 70}")
         print(f"Config : {label}  "
               f"(lcf={use_lcf}, tome={use_tome}, "
               f"strategy={strategy_tag}, resize={resize_tag})")
+        print(f"  Task weights: sent={task_weight_sent}, cat={task_weight_cat} | "
+              f"ES weights: sent={es_weight_sent}, cat={es_weight_cat}")
         print(f"{'─' * 70}")
 
         r = train_joint(
@@ -522,6 +569,10 @@ def main() -> None:
             use_tome=use_tome,
             tome_resize=tome_resize,
             merge_strategy=merge_strategy,
+            task_weight_sent=task_weight_sent,
+            task_weight_cat=task_weight_cat,
+            es_weight_sent=es_weight_sent,
+            es_weight_cat=es_weight_cat,
             short_id=short_id,
             train_ds=train_ds,
             dev_ds=dev_ds,
@@ -535,6 +586,10 @@ def main() -> None:
         r["use_tome"]      = use_tome
         r["tome_resize"]   = tome_resize
         r["merge_strategy"] = merge_strategy
+        r["task_weight_sent"] = task_weight_sent
+        r["task_weight_cat"] = task_weight_cat
+        r["es_weight_sent"] = es_weight_sent
+        r["es_weight_cat"] = es_weight_cat
 
         results.append(r)
         labels.append(label)
@@ -558,6 +613,7 @@ def main() -> None:
     csv_path = RUNS_DIR / "experiment_results_joint.csv"
     fieldnames = (
         ["label", "use_lcf", "use_tome", "tome_resize", "merge_strategy",
+         "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
          "train_time_sec", "best_epoch",
          "sentiment_f1", "sentiment_acc"]
         + [f"sent_f1_{l}" for l in SENTIMENT_LABELS]

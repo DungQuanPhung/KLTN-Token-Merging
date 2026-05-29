@@ -2,61 +2,67 @@
 ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 EXPERIMENT SUMMARY — Joint training (Sent: main+supp | Cat: main only)
 ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-  Seed: 42  MaxEpochs: 5  Patience: 3  Batch: 16  LR: 2e-05  Device: cuda
+  Seed: 42  MaxEpochs: 15  Patience: 4  Batch: 16  LR: 2e-05  Device: cuda  UseSupp: True  UseWeights: True
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Configuration               LCF Strategy         Resize  Time(s)  BestEp   Sent-F1   Cat-F1     Acc
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Joint Baseline                N —                     —   1064.5       2    76.34%   84.95%  95.19%
-  Joint LCF only                Y —                     —   1708.0       5    76.97%   88.33%  94.87%
-  LCF+Bip (resize)              Y bipartite           yes   1863.5       4    65.90%   86.38%  90.06%
-  LCF+Bip (compact)             Y bipartite            NO   1766.6       3    75.59%   88.62%  95.19%  x0.60
-  Bip (resize)                  N bipartite           yes   1767.5       4    70.86%   85.53%  92.95%
-  Bip (compact)                 N bipartite            NO   1753.4       5    72.77%   86.52%  94.87%  x0.61
-  LCF+Seq (resize)              Y sequential_local    yes   2012.6       5    75.84%   87.17%  95.19%
-  LCF+Seq (compact)             Y sequential_local     NO   2022.3       4    70.17%   84.75%  92.95%  x0.53
-  Seq (resize)                  N sequential_local    yes   2072.8       4    67.90%   85.95%  92.95%
-  Seq (compact)                 N sequential_local     NO   2050.3       5    69.12%   88.28%  93.59%  x0.52
-  LCF+Attn (resize)             Y attention_weighted    yes   2057.9       4    73.17%   86.24%  92.95%
-  LCF+Attn (compact)            Y attention_weighted     NO   2074.1       3    72.88%   87.57%  94.87%  x0.51
-  Attn (resize)                 N attention_weighted    yes   2044.9       3    73.21%   89.65%  95.19%
-  Attn (compact)                N attention_weighted     NO   2049.6       4    69.39%   83.42%  92.31%  x0.52
+  Baseline (Sent-focus)         N —                     —    627.0       8    72.55%   88.78%  94.87%
+  Baseline (Cat-focus)          N —                     —    264.6       2    74.20%   86.12%  94.55%
+  Baseline (Balanced)           N —                     —    451.6       6    70.63%   86.43%  94.55%
+  LCF only                      Y —                     —    706.4      11    71.31%   88.70%  94.23%
+  LCF+Bip (resize)              Y bipartite           yes    757.5       5    81.09%   88.46%  95.51%
+  LCF+Bip (compact)             Y bipartite            NO    729.7       5    73.69%   88.27%  93.91%  x0.86
+  Bip (resize)                  N bipartite           yes    966.0       7    69.13%   89.54%  93.59%
+  Bip (compact)                 N bipartite            NO    858.1       7    74.55%   89.06%  94.87%  x0.73
+  LCF+Seq (resize)              Y sequential_local    yes   1792.8      11    76.57%   89.62%  95.83%
+  LCF+Seq (compact)             Y sequential_local     NO   1045.2       5    73.99%   89.07%  93.59%  x0.60
+  Seq (resize)                  N sequential_local    yes   1307.3       7    75.06%   88.00%  95.83%
+  Seq (compact)                 N sequential_local     NO   1281.3       7    68.78%   89.87%  93.59%  x0.49
+  LCF+Attn (resize)             Y attention_weighted    yes   1368.4       9    79.73%   88.01%  96.47%
+  LCF+Attn (compact)            Y attention_weighted     NO   1500.7      11    71.80%   87.44%  94.23%  x0.42
+  Attn (resize)                 N attention_weighted    yes   1183.6       7    74.94%   86.70%  95.19%
+  Attn (compact)                N attention_weighted     NO    998.5       6    73.21%   86.62%  95.19%  x0.63
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Configuration               LCF  F1-positive  F1-negative   F1-neutral
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Joint Baseline                N       97.51%       84.44%       47.06%
-  Joint LCF only                Y       97.34%       80.95%       52.63%
-  LCF+Bip (resize)              Y       94.55%       75.56%       27.59%
-  LCF+Bip (compact)             Y       97.70%       79.07%       50.00%
-  Bip (resize)                  N       96.23%       80.00%       36.36%
-  Bip (compact)                 N       97.35%       80.95%       40.00%
-  LCF+Seq (resize)              Y       97.53%       82.93%       47.06%
-  LCF+Seq (compact)             Y       96.56%       79.17%       34.78%
-  Seq (resize)                  N       96.43%       77.27%       30.00%
-  Seq (compact)                 N       96.96%       81.82%       28.57%
-  LCF+Attn (resize)             Y       96.19%       83.33%       40.00%
-  LCF+Attn (compact)            Y       97.52%       78.26%       42.86%
-  Attn (resize)                 N       97.69%       84.44%       37.50%
-  Attn (compact)                N       96.17%       80.00%       32.00%
+  Baseline (Sent-focus)         N       97.53%       77.27%       42.86%
+  Baseline (Cat-focus)          N       97.32%       80.85%       44.44%
+  Baseline (Balanced)           N       97.52%       79.07%       35.29%
+  LCF only                      Y       97.16%       73.91%       42.86%
+  LCF+Bip (resize)              Y       97.53%       79.07%       66.67%
+  LCF+Bip (compact)             Y       96.61%       80.00%       44.44%
+  Bip (resize)                  N       96.80%       77.27%       33.33%
+  Bip (compact)                 N       97.52%       79.07%       47.06%
+  LCF+Seq (resize)              Y       97.89%       81.82%       50.00%
+  LCF+Seq (compact)             Y       96.59%       83.72%       41.67%
+  Seq (resize)                  N       98.07%       80.95%       46.15%
+  Seq (compact)                 N       96.81%       76.19%       33.33%
+  LCF+Attn (resize)             Y       98.25%       80.95%       60.00%
+  LCF+Attn (compact)            Y       96.99%       75.56%       42.86%
+  Attn (resize)                 N       97.54%       77.27%       50.00%
+  Attn (compact)                N       97.71%       79.07%       42.86%
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Configuration               LCF F1-AMENITY F1-BRANDIN F1-EXPERIE F1-FACILIT F1-LOYALTY F1-SERVICE
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  Joint Baseline                N     91.28%     71.43%     79.37%     88.32%     83.33%     96.00%
-  Joint LCF only                Y     88.28%     85.71%     78.87%     87.13%     92.31%     97.67%
-  LCF+Bip (resize)              Y     90.91%     78.26%     72.41%     88.78%     92.31%     95.60%
-  LCF+Bip (compact)             Y     90.28%     84.21%     78.26%     87.80%     92.31%     98.85%
-  Bip (resize)                  N     92.41%     66.67%     75.41%     89.22%     92.31%     97.18%
-  Bip (compact)                 N     88.89%     75.00%     78.26%     87.56%     92.31%     97.11%
-  LCF+Seq (resize)              Y     90.41%     80.00%     75.36%     87.25%     92.31%     97.67%
-  LCF+Seq (compact)             Y     93.15%     69.23%     67.92%     89.76%     92.31%     96.13%
-  Seq (resize)                  N     90.91%     69.57%     77.42%     88.35%     92.31%     97.18%
-  Seq (compact)                 N     89.36%     80.00%     81.82%     88.46%     92.31%     97.73%
-  LCF+Attn (resize)             Y     88.11%     85.71%     68.97%     87.80%     92.31%     94.57%
-  LCF+Attn (compact)            Y     90.41%     75.00%     80.00%     90.00%     92.31%     97.73%
-  Attn (resize)                 N     90.91%     81.82%     84.85%     89.76%     92.31%     98.29%
-  Attn (compact)                N     89.51%     63.64%     75.86%     88.04%     85.71%     97.75%
+  Baseline (Sent-focus)         N     90.41%     81.82%     80.65%     89.22%     92.31%     98.31%
+  Baseline (Cat-focus)          N     90.20%     71.43%     79.37%     87.96%     92.31%     95.45%
+  Baseline (Balanced)           N     91.67%     72.73%     75.00%     89.10%     92.31%     97.75%
+  LCF only                      Y     87.42%     85.71%     80.65%     88.89%     92.31%     97.21%
+  LCF+Bip (resize)              Y     89.04%     85.71%     80.00%     86.57%     92.31%     97.11%
+  LCF+Bip (compact)             Y     86.33%     85.71%     81.16%     86.96%     92.31%     97.14%
+  Bip (resize)                  N     92.81%     81.82%     81.82%     90.16%     92.31%     98.31%
+  Bip (compact)                 N     94.59%     78.26%     81.16%     90.36%     92.31%     97.70%
+  LCF+Seq (resize)              Y     89.36%     85.71%     83.08%     89.00%     92.31%     98.29%
+  LCF+Seq (compact)             Y     90.41%     85.71%     80.00%     88.32%     92.31%     97.67%
+  Seq (resize)                  N     92.52%     72.73%     81.97%     90.20%     92.31%     98.31%
+  Seq (compact)                 N     92.62%     80.00%     85.71%     91.46%     92.31%     97.14%
+  LCF+Attn (resize)             Y     90.07%     81.82%     78.69%     88.00%     92.31%     97.18%
+  LCF+Attn (compact)            Y     91.78%     81.82%     73.02%     89.11%     92.31%     96.63%
+  Attn (resize)                 N     89.80%     76.19%     76.19%     89.11%     92.31%     96.63%
+  Attn (compact)                N     90.14%     76.19%     75.86%     88.57%     92.31%     96.67%
 
 ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
   Sent training : main .apc + supplement (negative.tsv + neutral.tsv)
