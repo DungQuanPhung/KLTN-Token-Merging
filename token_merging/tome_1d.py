@@ -51,6 +51,7 @@ def _bipartite_pairs(
     mask_1d: torch.Tensor,
     protect_left: int,
     protect_right: int,
+    aspect_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[Dict[str, Any]]]:
     """Return (src, dst, meta) for one merge step, or three Nones plus failure meta dict.
 
@@ -83,6 +84,8 @@ def _bipartite_pairs(
     if protect_right > 0:
         inner[-protect_right:] = 0
     inner = inner * mask_1d
+    if aspect_mask is not None:
+        inner = inner * (~aspect_mask.to(inner.dtype))
     pos = torch.nonzero(inner > 0.5, as_tuple=False).squeeze(-1)
     if pos.numel() < 2:
         return None, None, {
@@ -112,7 +115,9 @@ def _bipartite_pairs(
     pos_rank = {tok_i: rk for rk, tok_i in enumerate(pos_cpu)}
     role: List[str] = []
     for i in range(n):
-        if protect_left > 0 and i < protect_left:
+        if aspect_mask is not None and aspect_mask[i]:
+            role.append("protected_aspect")
+        elif protect_left > 0 and i < protect_left:
             role.append("protected_cls")
         elif protect_right > 0 and i >= n - protect_right:
             role.append("protected_sep")
@@ -154,6 +159,7 @@ def _bipartite_pairs(
         "status": "ok",
         "protect_left_positions": int(protect_left),
         "protect_right_positions": int(protect_right),
+        "protect_aspect_positions": int(aspect_mask.sum().item()) if aspect_mask is not None else 0,
         "interior_candidates_ordered": pos_cpu,
         "per_token_merge_role_before_step": role,
         "pair_cosine_similarity": pair_sims,
@@ -191,6 +197,7 @@ def _attention_weighted_merge(
     attn: torch.Tensor,     # (n,)    – attention weights per token [0,1]
     protect_left: int,      # CLS protected positions
     protect_right: int,     # SEP protected positions
+    protect_aspect: bool = True,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[Tuple[int, int]]]:
     """Attention-weighted merge: merge lowest-attention tokens with nearest neighbors.
 
@@ -226,7 +233,7 @@ def _attention_weighted_merge(
         protected[-protect_right:] = True
 
     # Aspect tokens (LCF=1) are highly protected (should not be removed)
-    is_aspect = lcf > 0.5
+    is_aspect = lcf > 0.5 if protect_aspect else torch.zeros_like(lcf, dtype=torch.bool)
 
     # High-attention tokens (top 25%) are protected
     attn_threshold = torch.quantile(attn_w, 0.75)
@@ -281,6 +288,7 @@ def _sequential_neighbor_merge(
     lcf: torch.Tensor,      # (n,)    – LCF flags (1.0 = aspect position)
     protect_left: int,      # number of protected tokens on the left  (CLS)
     protect_right: int,     # number of protected tokens on the right (SEP)
+    aspect_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[Tuple[int, int]]]:
     """Sequential left-to-right local-neighbour merge (one pass).
 
@@ -326,6 +334,10 @@ def _sequential_neighbor_merge(
     lcf_w = lcf.clone()
     removed  = torch.zeros(n, dtype=torch.bool,  device=device)
     pairs: List[Tuple[int, int]] = []
+    if aspect_mask is None:
+        aspect_mask = lcf_w > 0.5
+    else:
+        aspect_mask = aspect_mask.to(torch.bool)
 
     end = n - protect_right          # first non-mergeable index on the right
 
@@ -339,7 +351,7 @@ def _sequential_neighbor_merge(
 
     i = protect_left
     while i < end:
-        if removed[i] or mid_sep[i]:
+        if removed[i] or mid_sep[i] or aspect_mask[i]:
             i += 1
             continue
 
@@ -357,6 +369,8 @@ def _sequential_neighbor_merge(
         while right < end and (removed[right] or mid_sep[right]):
             right += 1
         has_right = right < end and not removed[right] and not mid_sep[right]
+        if has_right and aspect_mask[right]:
+            has_right = False
 
         if not has_left and not has_right:
             i += 1
@@ -430,6 +444,7 @@ class ToMeSequenceMerger(nn.Module):
         num_merge_steps: int = 2,
         protect_cls: bool = True,
         protect_sep: bool = True,
+        protect_aspect: bool = True,
         resize: bool = True,
         merge_strategy: str = "bipartite",
     ):
@@ -438,6 +453,7 @@ class ToMeSequenceMerger(nn.Module):
             num_merge_steps  : number of merge passes (each reduces seq length by ~half).
             protect_cls      : never remove or absorb the CLS token [0].
             protect_sep      : never remove or absorb the SEP token [-1].
+            protect_aspect   : never remove tokens belonging to the aspect term.
             resize           : if True, interpolate back to original L after merging;
                                if False, keep compact sequence of length L' ≤ L.
             merge_strategy   : "bipartite"         – ToMe (CVPR 2023) alternating-group
@@ -457,6 +473,7 @@ class ToMeSequenceMerger(nn.Module):
         self.num_merge_steps  = num_merge_steps
         self.protect_cls      = protect_cls
         self.protect_sep      = protect_sep
+        self.protect_aspect   = protect_aspect
         self.resize           = resize
         self.merge_strategy   = merge_strategy
 
@@ -538,8 +555,9 @@ class ToMeSequenceMerger(nn.Module):
 
                 if self.merge_strategy == "bipartite":
                     # ── Bipartite cosine matching (ToMe CVPR 2023) ────────────
+                    aspect_mask = lf_seg > 0.5 if self.protect_aspect else None
                     src, dst, pair_meta = _bipartite_pairs(
-                        x_seg, m_seg, prot_l, prot_r
+                        x_seg, m_seg, prot_l, prot_r, aspect_mask
                     )
                     if src is None:
                         seq_trace["steps"].append(
@@ -560,8 +578,9 @@ class ToMeSequenceMerger(nn.Module):
 
                 elif self.merge_strategy == "sequential_local":
                     # ── Sequential local-neighbour merge ──────────────────────
+                    aspect_mask = lf_seg > 0.5 if self.protect_aspect else None
                     x_seg, lf_seg, keep_mask, raw_pairs = _sequential_neighbor_merge(
-                        x_seg, lf_seg, prot_l, prot_r
+                        x_seg, lf_seg, prot_l, prot_r, aspect_mask
                     )
                     if not raw_pairs:
                         seq_trace["steps"].append(
@@ -589,7 +608,8 @@ class ToMeSequenceMerger(nn.Module):
                             attn_seg = attn_full[valid_idx].clone()
 
                     x_seg, lf_seg, keep_mask, raw_pairs = _attention_weighted_merge(
-                        x_seg, lf_seg, attn_seg, prot_l, prot_r
+                        x_seg, lf_seg, attn_seg, prot_l, prot_r,
+                        self.protect_aspect,
                     )
                     if not raw_pairs:
                         seq_trace["steps"].append(

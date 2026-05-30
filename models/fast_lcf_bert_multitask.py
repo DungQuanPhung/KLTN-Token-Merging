@@ -92,6 +92,7 @@ class FastLcfBertMultiTask(nn.Module):
                 num_merge_steps=tome_merge_steps,
                 protect_cls=True,
                 protect_sep=True,
+                protect_aspect=True,
                 resize=tome_resize,
                 merge_strategy=tome_merge_strategy,
             )
@@ -105,26 +106,28 @@ class FastLcfBertMultiTask(nn.Module):
         bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         hidden = bert_out.last_hidden_state  # (B, L, H)
 
-        # ── Optional Token Merging ─────────────────────────────────────────────
+        # ── Apply LCF first when ToMe is enabled, otherwise preserve original flow.
+        if self._use_lcf:
+            lcf_matrix = lcf_vec.unsqueeze(-1)    # (B, L, 1)
+            hidden_lcf = hidden * lcf_matrix      # (B, L, H) – zero out non-aspect tokens
+        else:
+            hidden_lcf = hidden
+
         if self._use_tome:
             # forward_with_trace returns (trace, merged_h, merged_lcf, new_attn_mask)
             #   tome_resize=True : new_attn_mask is None,  hidden shape stays (B, L, H)
             #   tome_resize=False: new_attn_mask is (B, L'), hidden shape is (B, L', H)
             _, hidden, lcf_vec, new_attn_mask = self.tome.forward_with_trace(
-                hidden, lcf_vec, attention_mask.float()
+                hidden_lcf, lcf_vec, attention_mask.float()
             )
             # When resize=False the attention mask must follow the shorter sequence
             if new_attn_mask is not None:
                 attention_mask = new_attn_mask.long()
 
-        # ── LCF masking or identity ────────────────────────────────────────────
-        if self._use_lcf:
-            # Multiply hidden states by aspect-position mask
-            lcf_matrix = lcf_vec.unsqueeze(-1)    # (B, L['], 1)
-            lcf_features = hidden * lcf_matrix    # (B, L['], H) – zero out non-aspect
-        else:
-            # No LCF: treat all positions equally
+            # If LCF was already applied before merge, merged hidden is the local-context input.
             lcf_features = hidden
+        else:
+            lcf_features = hidden_lcf
 
         lcf_features = self.bert_SA(lcf_features)  # (B, L['], H)
 

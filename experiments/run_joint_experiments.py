@@ -90,10 +90,10 @@ DROPOUT          = 0.1
 NUM_HEADS        = 8
 TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
 # Default loss and early stopping weights
-DEFAULT_TASK_WEIGHT_SENT = 1.2
-DEFAULT_TASK_WEIGHT_CAT  = 0.8
-DEFAULT_ES_WEIGHT_SENT   = 0.6  # For early stopping validation metric
-DEFAULT_ES_WEIGHT_CAT    = 0.4
+DEFAULT_TASK_WEIGHT_SENT = 1.0
+DEFAULT_TASK_WEIGHT_CAT  = 1.0
+DEFAULT_ES_WEIGHT_SENT   = 0.5  # For early stopping validation metric
+DEFAULT_ES_WEIGHT_CAT    = 0.5
 
 # Override weights per config (task_weight_sent loss, task_weight_cat, es_weight_sent, es_weight_cat)
 WEIGHT_OVERRIDES = {
@@ -437,7 +437,7 @@ def print_summary_table(
     print(f"{'─' * W}")
 
     baseline_time = next(
-        (r["train_time_sec"] for r in results if not results[0]["use_tome"]),
+        (r["train_time_sec"] for r in results if not r["use_tome"]),
         None,
     )
     for r, label in zip(results, labels):
