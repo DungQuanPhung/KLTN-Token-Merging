@@ -88,6 +88,7 @@ LR               = 2e-5
 MAX_SEQ_LEN      = 128
 DROPOUT          = 0.1
 NUM_HEADS        = 8
+SRD_THRESHOLD    = 5  # LCF-ATEPC CDW full-weight radius α (paper default)
 TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
 # Default loss and early stopping weights
 DEFAULT_TASK_WEIGHT_SENT = 1.0
@@ -278,6 +279,7 @@ def train_joint(
         dropout=DROPOUT,
         num_heads=NUM_HEADS,
         tome_merge_steps=TOME_MERGE_STEPS,
+        srd_threshold=SRD_THRESHOLD,
     ).to(DEVICE)
 
     optimiser = torch.optim.AdamW(model.parameters(), lr=LR)

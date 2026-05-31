@@ -1,21 +1,32 @@
 # -*- coding: utf-8 -*-
 """Multi-task FAST_LCF_BERT: aspect_category + sentiment classification.
 
-Supports 4 configurations via constructor flags:
-    use_lcf      (bool) – apply Local Context Focus masking after BERT
-    use_tome     (bool) – apply Token Merging (ToMe) after BERT backbone
-    tome_resize  (bool) – how ToMe handles sequence length:
-        True  (default): merged tokens are interpolated BACK to original L.
-                         Output shape stays (B, L, H) — no architecture change.
-                         Use for: measuring representation quality of merging.
-        False:           keep the compact merged sequence of length L' ≤ L.
-                         SA layers run on shorter sequence → real speed gain.
-                         Use for: measuring accuracy + speed trade-off.
+LCF semantics (LCF-ATEPC, Zeng et al. 2019):
+    The input ``lcf_vec`` is a binary aspect indicator (1.0 at aspect subword
+    positions in segment A, 0.0 elsewhere).  This model converts it into a
+    Context Dynamic Weight (CDW) vector inside the forward pass:
+
+        SRD_i = max(0, |i - aspect_center| - floor(aspect_len / 2))
+        w_i   = 1                              if SRD_i ≤ α
+                (L - (SRD_i - α)) / L          otherwise
+
+    The CDW vector multiplies the BERT hidden states to produce the local
+    stream; the global stream uses the unmasked hidden states.  This matches
+    the two-stream design from the original paper.
 
 Architecture:
-    BERT  →  [ToMe]  →  [LCF mask]  →  SA
-    →  cat(lcf_feat, global)  →  Linear(2H→H)  →  Dropout
+    BERT  →  [ToMe]  →  split:
+        local  = hidden * CDW(lcf_vec)   →  SA
+        global = hidden
+    →  cat(local, global)  →  Linear(2H→H)  →  Dropout
     →  SA  →  BertPooler  →  [sentiment head | aspect_cat head]
+
+Constructor flags:
+    use_lcf       (bool) – enable Local Context Focus (CDW-weighted local stream).
+    use_tome      (bool) – apply Token Merging (ToMe) after BERT backbone.
+    tome_resize   (bool) – True: interpolate merged tokens back to original L.
+                           False: keep compact length L' ≤ L (real speedup).
+    srd_threshold (int)  – CDW full-weight radius α (paper default = 5).
 """
 
 from __future__ import annotations
@@ -25,6 +36,47 @@ import torch.nn as nn
 from transformers.models.bert.modeling_bert import BertPooler
 
 from thesis_apc_baseline.token_merging.tome_1d import ToMeSequenceMerger
+
+
+def _compute_cdw_weights(
+    aspect_indicator: torch.Tensor,
+    attention_mask: torch.Tensor,
+    srd_threshold: int = 5,
+) -> torch.Tensor:
+    """LCF-ATEPC CDW weights from a binary aspect indicator.
+
+    Args:
+        aspect_indicator : (B, L) float — 1.0 at aspect subword positions.
+        attention_mask   : (B, L) float — 1.0 at valid (non-padding) positions.
+        srd_threshold    : full-weight local-context radius α (paper default = 5).
+
+    Returns:
+        (B, L) float CDW weights in [0, 1] with padding positions zeroed.
+    """
+    B, L = aspect_indicator.shape
+    device = aspect_indicator.device
+    dtype = aspect_indicator.dtype
+    positions = torch.arange(L, device=device, dtype=torch.float32)
+    cdw = torch.zeros(B, L, device=device, dtype=dtype)
+
+    for b in range(B):
+        asp = torch.nonzero(aspect_indicator[b] > 0.5, as_tuple=False).squeeze(-1)
+        if asp.numel() == 0:
+            cdw[b] = torch.ones(L, device=device, dtype=dtype)
+            continue
+        a_start = asp.min().float()
+        a_end   = asp.max().float()
+        center  = (a_start + a_end) / 2.0
+        half_aspect = torch.floor((a_end - a_start + 1.0) / 2.0)
+        srd = torch.clamp(torch.abs(positions - center) - half_aspect, min=0.0)
+        w = torch.where(
+            srd <= float(srd_threshold),
+            torch.ones_like(srd),
+            (float(L) - (srd - float(srd_threshold))) / float(L),
+        )
+        cdw[b] = torch.clamp(w, min=0.0, max=1.0).to(dtype)
+
+    return cdw * attention_mask.to(dtype)
 
 
 class _SALayer(nn.Module):
@@ -69,12 +121,14 @@ class FastLcfBertMultiTask(nn.Module):
         dropout: float = 0.1,
         num_heads: int = 8,
         tome_merge_steps: int = 2,
+        srd_threshold: int = 5,
     ) -> None:
         super().__init__()
         self.bert = bert
         self._use_lcf = use_lcf
         self._use_tome = use_tome
         self._tome_resize = tome_resize
+        self._srd_threshold = srd_threshold
 
         H = bert.config.hidden_size
 
@@ -101,45 +155,44 @@ class FastLcfBertMultiTask(nn.Module):
         self,
         input_ids: torch.Tensor,       # (B, L)
         attention_mask: torch.Tensor,  # (B, L)
-        lcf_vec: torch.Tensor,         # (B, L) float – 1.0 at aspect positions
+        lcf_vec: torch.Tensor,         # (B, L) float – binary aspect indicator
     ) -> dict:
         bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        hidden = bert_out.last_hidden_state  # (B, L, H)
+        hidden = bert_out.last_hidden_state          # (B, L, H) — global stream
 
-        # ── Apply LCF first when ToMe is enabled, otherwise preserve original flow.
-        if self._use_lcf:
-            lcf_matrix = lcf_vec.unsqueeze(-1)    # (B, L, 1)
-            hidden_lcf = hidden * lcf_matrix      # (B, L, H) – zero out non-aspect tokens
-        else:
-            hidden_lcf = hidden
-
+        # ── ToMe runs on the UNMASKED global hidden so the global branch is
+        # not corrupted by LCF.  The aspect indicator is propagated through
+        # merges (max over merged positions) and reused below to build CDW.
         if self._use_tome:
-            # forward_with_trace returns (trace, merged_h, merged_lcf, new_attn_mask)
-            #   tome_resize=True : new_attn_mask is None,  hidden shape stays (B, L, H)
-            #   tome_resize=False: new_attn_mask is (B, L'), hidden shape is (B, L', H)
             _, hidden, lcf_vec, new_attn_mask = self.tome.forward_with_trace(
-                hidden_lcf, lcf_vec, attention_mask.float()
+                hidden, lcf_vec, attention_mask.float()
             )
-            # When resize=False the attention mask must follow the shorter sequence
             if new_attn_mask is not None:
                 attention_mask = new_attn_mask.long()
 
-            # If LCF was already applied before merge, merged hidden is the local-context input.
-            lcf_features = hidden
+        # ── Local stream: weight hidden by CDW computed from aspect indicator
+        # (LCF-ATEPC).  When use_lcf=False the local stream falls back to the
+        # plain hidden states (equivalent to disabling LCF).
+        if self._use_lcf:
+            cdw = _compute_cdw_weights(
+                lcf_vec, attention_mask.to(hidden.dtype),
+                srd_threshold=self._srd_threshold,
+            )                                         # (B, L)
+            lcf_features = hidden * cdw.unsqueeze(-1)
         else:
-            lcf_features = hidden_lcf
+            lcf_features = hidden
 
-        lcf_features = self.bert_SA(lcf_features)  # (B, L['], H)
+        lcf_features = self.bert_SA(lcf_features)    # (B, L['], H)
 
         # ── Fuse local + global ────────────────────────────────────────────────
         cat_features = torch.cat([lcf_features, hidden], dim=-1)  # (B, L['], 2H)
-        cat_features = self.linear2(cat_features)                  # (B, L['], H)
+        cat_features = self.linear2(cat_features)
         cat_features = self.dropout(cat_features)
-        cat_features = self.bert_SA_(cat_features)                 # (B, L['], H)
+        cat_features = self.bert_SA_(cat_features)
 
-        pooled = self.bert_pooler(cat_features)  # (B, H) via CLS token
+        pooled = self.bert_pooler(cat_features)
 
         return {
-            "sentiment_logits": self.dense_sentiment(pooled),
+            "sentiment_logits":  self.dense_sentiment(pooled),
             "aspect_cat_logits": self.dense_aspect_cat(pooled),
         }

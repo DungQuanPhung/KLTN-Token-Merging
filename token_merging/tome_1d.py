@@ -85,7 +85,9 @@ def _bipartite_pairs(
         inner[-protect_right:] = 0
     inner = inner * mask_1d
     if aspect_mask is not None:
-        inner = inner * (~aspect_mask.to(inner.dtype))
+        # Ensure boolean mask before bitwise inversion, then cast to inner's dtype
+        aspect_mask = aspect_mask.to(torch.bool)
+        inner = inner * (~aspect_mask).to(inner.dtype)
     pos = torch.nonzero(inner > 0.5, as_tuple=False).squeeze(-1)
     if pos.numel() < 2:
         return None, None, {

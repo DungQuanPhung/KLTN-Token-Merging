@@ -68,12 +68,25 @@ def parse_apc_file(path: str) -> List[Dict[str, str]]:
         # Replace $T$ placeholder with the actual aspect term
         text = sentence.replace("$T$", aspect_term).strip()
 
+        # Locate aspect span in the final text (first occurrence; matches LCF-ATEPC).
+        aspect_stripped = (aspect_term or "").strip()
+        if aspect_stripped:
+            aspect_char_start = text.find(aspect_stripped)
+        else:
+            aspect_char_start = -1
+        aspect_char_end = (
+            aspect_char_start + len(aspect_stripped) - 1
+            if aspect_char_start >= 0 else -1
+        )
+
         samples.append(
             {
                 "text": text,
                 "aspect_term": aspect_term,
                 "aspect_category": aspect_cat if aspect_cat else "UNKNOWN",
                 "sentiment": sentiment,
+                "aspect_char_start": aspect_char_start,
+                "aspect_char_end":   aspect_char_end,
             }
         )
     return samples
@@ -158,11 +171,24 @@ def parse_supplement_tsv(path: str) -> List[Dict[str, str]]:
                 continue
 
             text = text_raw.replace("$T$", term).strip()
+
+            term_stripped = term.strip()
+            if term_stripped:
+                aspect_char_start = text.find(term_stripped)
+            else:
+                aspect_char_start = -1
+            aspect_char_end = (
+                aspect_char_start + len(term_stripped) - 1
+                if aspect_char_start >= 0 else -1
+            )
+
             samples.append(
                 {
-                    "text":        text,
-                    "aspect_term": term,
-                    "sentiment":   sentiment,
+                    "text":              text,
+                    "aspect_term":       term,
+                    "sentiment":         sentiment,
+                    "aspect_char_start": aspect_char_start,
+                    "aspect_char_end":   aspect_char_end,
                 }
             )
     return samples
@@ -289,6 +315,7 @@ class ApcFileDataset(Dataset):
                 padding="max_length",
                 truncation=True,
                 return_tensors="pt",
+                return_offsets_mapping=True,
             )
 
             input_ids      = enc["input_ids"].squeeze(0)           # (L,)
@@ -296,7 +323,32 @@ class ApcFileDataset(Dataset):
             token_type_ids = enc.get(
                 "token_type_ids", torch.zeros_like(input_ids)
             ).squeeze(0)
-            lcf_vec = token_type_ids.float()                       # (L,)
+            offsets        = enc["offset_mapping"].squeeze(0)      # (L, 2)
+
+            # ── Build LCF aspect indicator (binary, 1.0 at aspect subwords) ──
+            # Mark tokens in segment A whose char offsets overlap the aspect span.
+            # The downstream model converts this binary mask into CDW weights
+            # (LCF-ATEPC, Zeng 2019).  Falls back to segment B (aspect copy) if
+            # the aspect was truncated out of segment A.
+            asp_cs = row.get("aspect_char_start", -1)
+            asp_ce = row.get("aspect_char_end",   -1)
+            lcf_vec = torch.zeros_like(input_ids, dtype=torch.float32)
+            if asp_cs >= 0 and asp_ce >= asp_cs:
+                for k in range(input_ids.size(0)):
+                    if attention_mask[k].item() == 0:
+                        continue
+                    if token_type_ids[k].item() != 0:        # only segment A
+                        continue
+                    tok_s = int(offsets[k, 0].item())
+                    tok_e = int(offsets[k, 1].item())
+                    if tok_s == 0 and tok_e == 0:            # special tokens
+                        continue
+                    if tok_e > asp_cs and tok_s <= asp_ce:   # overlap
+                        lcf_vec[k] = 1.0
+            if lcf_vec.sum().item() == 0:
+                # Aspect missing from segment A (e.g. truncated) — fall back to
+                # the segment-B aspect copy so the local stream still has signal.
+                lcf_vec = token_type_ids.float()
 
             # aspect_cat_label: real category for main samples; 0 (placeholder)
             # for supplement samples — will be masked out in the loss computation.
@@ -375,6 +427,7 @@ class ApcCSVDataset(Dataset):
                 padding="max_length",
                 truncation=True,
                 return_tensors="pt",
+                return_offsets_mapping=True,
             )
 
             input_ids      = enc["input_ids"].squeeze(0)
@@ -382,7 +435,26 @@ class ApcCSVDataset(Dataset):
             token_type_ids = enc.get(
                 "token_type_ids", torch.zeros_like(input_ids)
             ).squeeze(0)
-            lcf_vec = token_type_ids.float()
+            offsets        = enc["offset_mapping"].squeeze(0)
+
+            asp_stripped = aspect.strip()
+            asp_cs = text.find(asp_stripped) if asp_stripped else -1
+            asp_ce = asp_cs + len(asp_stripped) - 1 if asp_cs >= 0 else -1
+            lcf_vec = torch.zeros_like(input_ids, dtype=torch.float32)
+            if asp_cs >= 0:
+                for k in range(input_ids.size(0)):
+                    if attention_mask[k].item() == 0:
+                        continue
+                    if token_type_ids[k].item() != 0:
+                        continue
+                    tok_s = int(offsets[k, 0].item())
+                    tok_e = int(offsets[k, 1].item())
+                    if tok_s == 0 and tok_e == 0:
+                        continue
+                    if tok_e > asp_cs and tok_s <= asp_ce:
+                        lcf_vec[k] = 1.0
+            if lcf_vec.sum().item() == 0:
+                lcf_vec = token_type_ids.float()
 
             self.samples.append(
                 {
