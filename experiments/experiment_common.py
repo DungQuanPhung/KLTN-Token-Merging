@@ -136,12 +136,13 @@ def build_apc_config(
     use_tome: bool,
     seed: int,
     *,
+    use_cdm: bool = True, # New: enable CDM (binary mask) vs CDW (gradient)
     num_epoch: int = 3,
     batch_size: int = 16,
     patience: int = 5,
     max_seq_len: int = 80,
 ) -> Any:
-    """Return APC config; set ``use_tome`` / model class before trainer."""
+    """Return APC config; set ``use_tome``, ``use_cdm`` / model class before trainer."""
     config = APC.APCConfigManager.get_apc_config_english()
     if use_tome:
         from thesis_apc_baseline.experiments.register_model import (
@@ -171,6 +172,7 @@ def build_apc_config(
     config.use_bert_spc = True
     config.lsa = True
     config.cache_dataset = False
+    config.use_cdm = use_cdm  # New: enable CDM (binary mask) vs CDW (gradient)
     config.seed = [seed]
     return config
 
@@ -179,6 +181,7 @@ def run_training(
     use_tome: bool,
     seed: Optional[int] = None,
     *,
+    use_cdm: bool = True,
     num_epoch: int = 3,
     batch_size: int = 16,
     patience: int = 5,
@@ -194,6 +197,7 @@ def run_training(
     config = build_apc_config(
         use_tome,
         seed,
+        use_cdm=use_cdm,
         num_epoch=num_epoch,
         batch_size=batch_size,
         patience=patience,

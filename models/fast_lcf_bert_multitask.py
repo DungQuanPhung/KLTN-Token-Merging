@@ -79,6 +79,47 @@ def _compute_cdw_weights(
     return cdw * attention_mask.to(dtype)
 
 
+def _compute_cdm_weights(
+    aspect_indicator: torch.Tensor,
+    attention_mask: torch.Tensor,
+    srd_threshold: int = 5,
+) -> torch.Tensor:
+    """LCF-ATEPC CDM (Context Dynamic Mask) from a binary aspect indicator.
+
+    Args:
+        aspect_indicator : (B, L) float — 1.0 at aspect subword positions.
+        attention_mask   : (B, L) float — 1.0 at valid (non-padding) positions.
+        srd_threshold    : binary mask threshold α (default = 5).
+
+    Returns:
+        (B, L) float CDM binary mask {0, 1} with padding positions zeroed.
+    """
+    B, L = aspect_indicator.shape
+    device = aspect_indicator.device
+    dtype = aspect_indicator.dtype
+    positions = torch.arange(L, device=device, dtype=torch.float32)
+    cdm = torch.zeros(B, L, device=device, dtype=dtype)
+
+    for b in range(B):
+        asp = torch.nonzero(aspect_indicator[b] > 0.5, as_tuple=False).squeeze(-1)
+        if asp.numel() == 0:
+            cdm[b] = torch.ones(L, device=device, dtype=dtype)
+            continue
+        a_start = asp.min().float()
+        a_end   = asp.max().float()
+        center  = (a_start + a_end) / 2.0
+        half_aspect = torch.floor((a_end - a_start + 1.0) / 2.0)
+        srd = torch.clamp(torch.abs(positions - center) - half_aspect, min=0.0)
+        w = torch.where(
+            srd <= float(srd_threshold),
+            torch.ones_like(srd),
+            torch.zeros_like(srd),  # Binary mask: 0 outside threshold
+        )
+        cdm[b] = w.to(dtype)
+
+    return cdm * attention_mask.to(dtype)
+
+
 class _SALayer(nn.Module):
     """Multi-head self-attention with residual connection and LayerNorm."""
 
@@ -103,6 +144,7 @@ class FastLcfBertMultiTask(nn.Module):
         num_sentiment  : number of sentiment classes (default 3).
         num_aspect_cat : number of aspect-category classes.
         use_lcf        : enable Local Context Focus masking.
+        use_cdm        : if True, use CDM (binary mask); if False, use CDW (gradient).
         use_tome       : enable Token Merging after BERT backbone.
         dropout        : dropout probability.
         num_heads      : heads for self-attention layers.
@@ -115,6 +157,7 @@ class FastLcfBertMultiTask(nn.Module):
         num_sentiment: int = 3,
         num_aspect_cat: int = 10,
         use_lcf: bool = True,
+        use_cdm: bool = False,
         use_tome: bool = False,
         tome_resize: bool = True,
         tome_merge_strategy: str = "bipartite",
@@ -126,6 +169,7 @@ class FastLcfBertMultiTask(nn.Module):
         super().__init__()
         self.bert = bert
         self._use_lcf = use_lcf
+        self._use_cdm = use_cdm
         self._use_tome = use_tome
         self._tome_resize = tome_resize
         self._srd_threshold = srd_threshold
@@ -162,7 +206,7 @@ class FastLcfBertMultiTask(nn.Module):
 
         # ── ToMe runs on the UNMASKED global hidden so the global branch is
         # not corrupted by LCF.  The aspect indicator is propagated through
-        # merges (max over merged positions) and reused below to build CDW.
+        # merges (max over merged positions) and reused below to build CDW/CDM.
         if self._use_tome:
             _, hidden, lcf_vec, new_attn_mask = self.tome.forward_with_trace(
                 hidden, lcf_vec, attention_mask.float()
@@ -170,15 +214,23 @@ class FastLcfBertMultiTask(nn.Module):
             if new_attn_mask is not None:
                 attention_mask = new_attn_mask.long()
 
-        # ── Local stream: weight hidden by CDW computed from aspect indicator
-        # (LCF-ATEPC).  When use_lcf=False the local stream falls back to the
-        # plain hidden states (equivalent to disabling LCF).
+        # ── Local stream: mask hidden by CDW or CDM computed from aspect indicator.
+        # When use_lcf=False the local stream falls back to the plain hidden states.
         if self._use_lcf:
-            cdw = _compute_cdw_weights(
-                lcf_vec, attention_mask.to(hidden.dtype),
-                srd_threshold=self._srd_threshold,
-            )                                         # (B, L)
-            lcf_features = hidden * cdw.unsqueeze(-1)
+            if self._use_cdm:
+                # Use CDM (Context Dynamic Mask): binary mask {0, 1}
+                cdm = _compute_cdm_weights(
+                    lcf_vec, attention_mask.to(hidden.dtype),
+                    srd_threshold=self._srd_threshold,
+                )                                     # (B, L) binary
+                lcf_features = hidden * cdm.unsqueeze(-1)
+            else:
+                # Use CDW (Context Dynamic Weight): gradient mask [0, 1]
+                cdw = _compute_cdw_weights(
+                    lcf_vec, attention_mask.to(hidden.dtype),
+                    srd_threshold=self._srd_threshold,
+                )                                     # (B, L) gradient
+                lcf_features = hidden * cdw.unsqueeze(-1)
         else:
             lcf_features = hidden
 

@@ -142,6 +142,55 @@ def build_lcf_vector(
     return lcf_vec, weights, srd
 
 
+def build_lcf_vector_cdm(
+    hidden_states: torch.Tensor,
+    aspect_start: int,
+    aspect_end: int,
+    srd_threshold: int = 5,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Build an LCF vector using Context Dynamic Mask (CDM) formulation.
+
+    Args:
+        hidden_states: Tensor of shape [seq_len, hidden_dim].
+        aspect_start:  Start index of the aspect span (inclusive).
+        aspect_end:    End index of the aspect span (inclusive).
+        srd_threshold: SRD threshold for binary mask region (default 5).
+
+    Returns:
+        lcf_vec : Tensor [hidden_dim] containing the masked mean vector.
+        weights : Tensor [seq_len] of CDM mask {0, 1} for each token.
+        srd     : Tensor [seq_len] of SRD values for each token.
+    """
+    seq_len = hidden_states.size(0)
+
+    # Aspect center is the midpoint of the aspect span.
+    center = (aspect_start + aspect_end) / 2.0
+
+    # Effective half-length of the aspect span used in SRD calculation.
+    aspect_len = aspect_end - aspect_start + 1
+    half_aspect = torch.floor(torch.tensor(aspect_len / 2.0, dtype=torch.float32))
+
+    # Token positions from 0 to seq_len-1.
+    positions = torch.arange(seq_len, dtype=torch.float32, device=hidden_states.device)
+
+    # SRD_i = abs(i - center) - floor(aspect_len / 2), clamped at 0.
+    srd = torch.abs(positions - center) - half_aspect
+    srd = torch.clamp(srd, min=0.0)
+
+    # CDM mask: 1.0 inside threshold, 0.0 outside (binary).
+    weights = torch.where(
+        srd <= srd_threshold,
+        torch.ones_like(srd),
+        torch.zeros_like(srd),
+    )
+
+    # Apply weights to hidden states and average to produce local-context vector.
+    weighted_hidden = hidden_states * weights.unsqueeze(-1)
+    lcf_vec = weighted_hidden.mean(dim=0)
+
+    return lcf_vec, weights, srd
+
+
 def parse_supplement_tsv(path: str) -> List[Dict[str, str]]:
     """Parse a TSV supplement file (text / term / sentiment, no aspect_category).
 

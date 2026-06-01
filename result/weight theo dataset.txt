@@ -1,0 +1,24 @@
+
+══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+EXPERIMENT SUMMARY — Sentiment (main+supplement) vs Category (main only) | Separate training
+══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Seed: 42  MaxEpochs: 3  Patience: 3  Batch: 16  LR: 2e-05  Device: cuda
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Configuration               LCF Strategy         Resize |  Sent-Time  Sent-F1  S-Ep |  Cat-Time   Cat-F1  C-Ep
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Joint Baseline                N —                     — |      495.4s   68.88%     2 |     555.7s   84.73%     3
+Joint LCF only                Y —                     — |      576.5s   68.69%     2 |     471.4s   87.22%     3
+LCF+Bip (resize)              Y bipartite           yes |      785.8s   65.49%     2 |     596.9s   85.42%     3
+LCF+Bip (compact)             Y bipartite            NO |      743.5s   76.44%     3 |     584.8s   87.05%     2 x0.95
+Bip (resize)                  N bipartite           yes |      790.2s   70.27%     2 |     648.7s   84.65%     1
+Bip (compact)                 N bipartite            NO |      754.8s   79.48%     3 |     564.5s   86.94%     3 x0.98
+LCF+Seq (resize)              Y sequential_local    yes |      854.0s   68.67%     2 |     638.9s   84.45%     3
+LCF+Seq (compact)             Y sequential_local     NO |      865.9s   64.18%     2 |     617.1s   84.33%     3 x0.90
+Seq (resize)                  N sequential_local    yes |      866.8s   69.15%     2 |     699.1s   85.01%     3
+Seq (compact)                 N sequential_local     NO |      913.2s   75.70%     3 |     659.6s   83.92%     1 x0.84
+══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Sent training : main .apc + supplement (negative.tsv + neutral.tsv) — fixes class imbalance
+  Cat  training : main .apc only — no supplement data
+  bipartite → ToMe CVPR 2023 | sequential_local → new neighbour merge
+══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+

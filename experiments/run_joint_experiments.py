@@ -91,7 +91,7 @@ NUM_HEADS        = 8
 SRD_THRESHOLD    = 5  # LCF-ATEPC CDW full-weight radius α (paper default)
 TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
 # Default loss and early stopping weights
-DEFAULT_TASK_WEIGHT_SENT = 1.0
+DEFAULT_TASK_WEIGHT_SENT = 1.0  # 1.317
 DEFAULT_TASK_WEIGHT_CAT  = 1.0
 DEFAULT_ES_WEIGHT_SENT   = 0.5  # For early stopping validation metric
 DEFAULT_ES_WEIGHT_CAT    = 0.5
@@ -105,26 +105,26 @@ WEIGHT_OVERRIDES = {
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# (use_lcf, use_tome, tome_resize, merge_strategy, display_name, short_id)
-CONFIGS: List[Tuple[bool, bool, bool, str, str, str]] = [
-    # Baseline with different loss/ES weights
-    (False, False, True, "bipartite", "Baseline (Sent-focus)", "baseline_sent_focus"),
-    (False, False, True, "bipartite", "Baseline (Cat-focus)",  "baseline_cat_focus"),
-    (False, False, True, "bipartite", "Baseline (Balanced)",   "baseline_balanced"),
-    # Other models (use default weights)
-    (True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
-    (True,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
-    (True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
-    (False, True,  True,  "bipartite", "Bip (resize)",          "bip_resize"),
-    (False, True,  False, "bipartite", "Bip (compact)",         "bip_compact"),
-    (True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
-    (True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
-    (False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
-    (False, True,  False, "sequential_local", "Seq (compact)",         "seq_compact"),
-    (True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
-    (True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
-    (False, True,  True,  "attention_weighted", "Attn (resize)",       "attn_resize"),
-    (False, True,  False, "attention_weighted", "Attn (compact)",      "attn_compact"),
+# (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, display_name, short_id)
+CONFIGS: List[Tuple[bool, bool, bool, str, str, str, bool]] = [
+    # Baseline with different loss/ES weights (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, label, short_id)
+    # (False, False, False, True, "bipartite", "Baseline (Sent-focus)", "baseline_sent_focus"),
+    # (False, False, False, True, "bipartite", "Baseline (Cat-focus)",  "baseline_cat_focus"),
+    # (False, False, False, True, "bipartite", "Baseline (Balanced)",   "baseline_balanced"),
+    # Other models (use default weights) — set use_cdm=True for LCF configs to use CDM
+    (True,  True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
+    (True,  True,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
+    (True,  True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
+    # (False, False, True,  True,  "bipartite", "Bip (resize)",          "bip_resize"),
+    # (False, False, True,  False, "bipartite", "Bip (compact)",         "bip_compact"),
+    (True,  True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
+    (True,  True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
+    # (False, False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
+    # (False, False, True,  False, "sequential_local", "Seq (compact)",         "seq_compact"),
+    (True,  True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
+    (True,  True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
+    # (False, False, True,  True,  "attention_weighted", "Attn (resize)",       "attn_resize"),
+    # (False, False, True,  False, "attention_weighted", "Attn (compact)",      "attn_compact"),
 ]
 
 
@@ -237,6 +237,7 @@ def evaluate(
 
 def train_joint(
     use_lcf:        bool,
+    use_cdm:        bool,
     use_tome:       bool,
     tome_resize:    bool,
     merge_strategy: str,
@@ -273,6 +274,7 @@ def train_joint(
         num_sentiment=num_sentiment,
         num_aspect_cat=num_aspect_cat,
         use_lcf=use_lcf,
+        use_cdm=use_cdm,
         use_tome=use_tome,
         tome_resize=tome_resize,
         tome_merge_strategy=merge_strategy,
@@ -552,15 +554,16 @@ def main() -> None:
     print("Joint training: Sentiment (main+supp) + Category (main only)")
     print(f"{'═' * 70}")
 
-    for use_lcf, use_tome, tome_resize, merge_strategy, label, short_id in CONFIGS:
+    for use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, label, short_id in CONFIGS:
         # Get weights for this config
         task_weight_sent, task_weight_cat, es_weight_sent, es_weight_cat = get_weights_for_config(short_id)
         
         strategy_tag = merge_strategy if use_tome else "—"
         resize_tag   = ("resize" if tome_resize else "compact") if use_tome else "—"
+        cdm_tag      = " (CDM)" if use_cdm else ""
         print(f"\n{'─' * 70}")
-        print(f"Config : {label}  "
-              f"(lcf={use_lcf}, tome={use_tome}, "
+        print(f"Config : {label}{cdm_tag}  "
+              f"(lcf={use_lcf}, cdm={use_cdm}, tome={use_tome}, "
               f"strategy={strategy_tag}, resize={resize_tag})")
         print(f"  Task weights: sent={task_weight_sent}, cat={task_weight_cat} | "
               f"ES weights: sent={es_weight_sent}, cat={es_weight_cat}")
@@ -568,6 +571,7 @@ def main() -> None:
 
         r = train_joint(
             use_lcf=use_lcf,
+            use_cdm=use_cdm,
             use_tome=use_tome,
             tome_resize=tome_resize,
             merge_strategy=merge_strategy,
@@ -585,6 +589,7 @@ def main() -> None:
         )
         r["label"]         = label
         r["use_lcf"]       = use_lcf
+        r["use_cdm"]       = use_cdm
         r["use_tome"]      = use_tome
         r["tome_resize"]   = tome_resize
         r["merge_strategy"] = merge_strategy
@@ -614,7 +619,7 @@ def main() -> None:
 
     csv_path = RUNS_DIR / "experiment_results_joint.csv"
     fieldnames = (
-        ["label", "use_lcf", "use_tome", "tome_resize", "merge_strategy",
+        ["label", "use_lcf", "use_cdm", "use_tome", "tome_resize", "merge_strategy",
          "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
          "train_time_sec", "best_epoch",
          "sentiment_f1", "sentiment_acc"]

@@ -1,0 +1,11 @@
+label,use_lcf,use_tome,tome_resize,merge_strategy,sent_train_time,sent_best_epoch,sentiment_f1,sentiment_acc,cat_train_time,cat_best_epoch,aspect_cat_f1
+Joint Baseline,False,False,True,bipartite,495.37,2,68.88,92.31,555.72,3,84.73
+Joint LCF only,True,False,True,bipartite,576.5,2,68.69,88.14,471.36,3,87.22
+LCF+Bip (resize),True,True,True,bipartite,785.84,2,65.49,87.82,596.86,3,85.42
+LCF+Bip (compact),True,True,False,bipartite,743.46,3,76.44,94.87,584.75,2,87.05
+Bip (resize),False,True,True,bipartite,790.17,2,70.27,92.63,648.71,1,84.65
+Bip (compact),False,True,False,bipartite,754.81,3,79.48,95.19,564.49,3,86.94
+LCF+Seq (resize),True,True,True,sequential_local,854.03,2,68.67,88.46,638.91,3,84.45
+LCF+Seq (compact),True,True,False,sequential_local,865.86,2,64.18,88.78,617.09,3,84.33
+Seq (resize),False,True,True,sequential_local,866.82,2,69.15,91.99,699.14,3,85.01
+Seq (compact),False,True,False,sequential_local,913.19,3,75.7,95.83,659.58,1,83.92
