@@ -10,9 +10,10 @@ checkpoints/
 *.pt
 *.bin
 
-# Results
-results/
-
+runs_joint/
+*.pt
+*.bin
+*.json
 
 # OS
 .DS_Store
