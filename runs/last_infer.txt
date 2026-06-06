@@ -315,7 +315,7 @@
               ],
               "token_texts_before": [
                 "[CLS]",
-                "the",
+                "the", 
                 "[",
                 "b",
                 "-",
