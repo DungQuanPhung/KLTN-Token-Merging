@@ -7,35 +7,17 @@ EXPERIMENT SUMMARY — Joint training (Sent: main+supp | Cat: main only)
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Configuration               LCF Strategy         Resize  Time(s)  BestEp   Sent-F1   Cat-F1     Acc
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  LCF only                      Y —                     —    946.4      12    72.08%   87.21%  94.55%
-  LCF+Bip (resize)              Y bipartite           yes    860.6       6    73.79%   87.04%  95.19%
-  LCF+Bip (compact)             Y bipartite            NO   1261.1      13    73.78%   87.01%  95.19%  x0.75
-  LCF+Seq (resize)              Y sequential_local    yes   1374.8       7    69.57%   87.47%  93.27%
-  LCF+Seq (compact)             Y sequential_local     NO   1431.7       8    67.13%   86.96%  92.95%  x0.66
-  LCF+Attn (resize)             Y attention_weighted    yes   1691.1      12    78.14%   87.46%  96.15%
-  LCF+Attn (compact)            Y attention_weighted     NO    724.4       3    67.11%   87.79%  92.95%  x1.31
+  LCF+Bip (resize)              Y bipartite           yes    678.9       4    74.07%   88.31%  94.23%
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Configuration               LCF  F1-positive  F1-negative   F1-neutral
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  LCF only                      Y       97.17%       79.07%       40.00%
-  LCF+Bip (resize)              Y       97.52%       86.36%       37.50%
-  LCF+Bip (compact)             Y       97.54%       80.95%       42.86%
-  LCF+Seq (resize)              Y       96.43%       83.72%       28.57%
-  LCF+Seq (compact)             Y       96.61%       76.19%       28.57%
-  LCF+Attn (resize)             Y       98.07%       81.82%       54.55%
-  LCF+Attn (compact)            Y       96.77%       77.27%       27.27%
+  LCF+Bip (resize)              Y       96.81%       80.95%       44.44%
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   Configuration               LCF F1-AMENITY F1-BRANDIN F1-EXPERIE F1-FACILIT F1-LOYALTY F1-SERVICE
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-  LCF only                      Y     93.51%     78.26%     74.29%     87.70%     92.31%     97.18%
-  LCF+Bip (resize)              Y     93.15%     72.73%     76.67%     90.20%     92.31%     97.21%
-  LCF+Bip (compact)             Y     90.54%     85.71%     67.92%     89.42%     92.31%     96.13%
-  LCF+Seq (resize)              Y     93.33%     80.00%     74.58%     89.55%     92.31%     95.03%
-  LCF+Seq (compact)             Y     90.91%     73.68%     78.87%     87.68%     92.31%     98.29%
-  LCF+Attn (resize)             Y     89.80%     81.82%     75.41%     87.68%     92.31%     97.75%
-  LCF+Attn (compact)            Y     88.73%     78.26%     81.25%     87.92%     92.31%     98.29%
+  LCF+Bip (resize)              Y     93.15%     80.00%     78.12%     89.66%     92.31%     96.63%
 
 ════════════════════════════════════════════════════════════════════════════════════════════════════════════════
   Sent training : main .apc + supplement (negative.tsv + neutral.tsv)

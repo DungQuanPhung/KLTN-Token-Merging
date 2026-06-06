@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Shared APC training config + timing/metrics helpers for baseline vs ToMe."""
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def build_apc_config(
     """Return APC config; set ``use_tome``, ``use_cdm`` / model class before trainer."""
     config = APC.APCConfigManager.get_apc_config_english()
     if use_tome:
-        from thesis_apc_baseline.experiments.register_model import (
+        from experiments.register_model import (
             register_fast_lcf_bert_tome,
         )
 

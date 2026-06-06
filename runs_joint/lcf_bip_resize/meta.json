@@ -1,0 +1,25 @@
+{
+  "sentiment_labels": [
+    "positive",
+    "negative",
+    "neutral"
+  ],
+  "category_labels": [
+    "AMENITY",
+    "BRANDING",
+    "EXPERIENCE",
+    "FACILITY",
+    "LOYALTY",
+    "SERVICE"
+  ],
+  "num_aspect_cat": 6,
+  "best_dev_f1": 75.57,
+  "best_epoch": 4,
+  "config": {
+    "use_lcf": true,
+    "use_cdm": true,
+    "use_tome": true,
+    "tome_resize": true,
+    "merge_strategy": "bipartite"
+  }
+}

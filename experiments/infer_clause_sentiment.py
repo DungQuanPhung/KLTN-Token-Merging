@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Split one sentence into clauses+terms by Phi-3, then run APC sentiment inference per clause.
 
@@ -21,12 +21,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from thesis_apc_baseline.models.llm_model import (
+from models.llm_model import (
     clauses_to_infer_one_inputs,
     infer_sentiment_from_sentence_with_phi3_split,
     split_sentence_with_terms_llm,
 )
-from thesis_apc_baseline.experiments.apc_inference import to_json_serializable
+from experiments.apc_inference import to_json_serializable
 
 
 def _extract_sentiment_fields(pred: object) -> tuple[str, str]:

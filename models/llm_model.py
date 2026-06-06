@@ -1,4 +1,4 @@
-"""Utilities to split sentence into ABSA clauses with Phi-3 and infer sentiment per clause."""
+﻿"""Utilities to split sentence into ABSA clauses with Phi-3 and infer sentiment per clause."""
 
 from __future__ import annotations
 
@@ -253,7 +253,7 @@ def infer_sentiment_from_sentence_with_phi3_split(
       2) convert into infer_one-compatible train-style inputs
       3) infer sentiment for each item with PyABSA classifier
     """
-    from thesis_apc_baseline.experiments.apc_inference import (
+    from experiments.apc_inference import (
         infer_train_style_item,
         load_apc_sentiment_classifier,
     )

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Load a trained APC checkpoint and predict polarity for **one** train-style sample:
 
@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from thesis_apc_baseline.experiments.apc_inference import (
+from experiments.apc_inference import (
     infer_train_style_item,
     load_apc_sentiment_classifier,
     normalize_train_style_item,

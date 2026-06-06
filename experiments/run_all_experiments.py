@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Train and compare all 4 LCF × ToMe configurations on the .apc dataset.
 
 Configurations:
@@ -66,13 +66,13 @@ from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 from sklearn.metrics import f1_score, accuracy_score, classification_report
 
-from thesis_apc_baseline.dataset_utils import (
+from dataset_utils import (
     ApcFileDataset,
     build_label_maps_from_apc,
     SENTIMENT_LABELS,
     SENTIMENT_MAP,
 )
-from thesis_apc_baseline.models.fast_lcf_bert_multitask import FastLcfBertMultiTask
+from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 

@@ -12,9 +12,9 @@ import torch.cuda.amp as amp
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
-from thesis_apc_baseline.src.inference import predict_aspects_for_records
-from thesis_apc_baseline.src.metrics import evaluate_exact_match, format_metrics
-from thesis_apc_baseline.src.model import T5AspectExtractor
+from src.inference import predict_aspects_for_records
+from src.metrics import evaluate_exact_match, format_metrics
+from src.model import T5AspectExtractor
 
 
 class ATETrainer:

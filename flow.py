@@ -1,4 +1,4 @@
-
+﻿
 # -*- coding: utf-8 -*-
 import sys
 from pathlib import Path
@@ -14,8 +14,8 @@ import pprint
 import argparse
 import json
 
-from thesis_apc_baseline.token_merging.tome_1d import ToMeSequenceMerger
-from thesis_apc_baseline.trace_utils import default_trace_path, write_token_merging_trace_txt
+from token_merging.tome_1d import ToMeSequenceMerger
+from trace_utils import default_trace_path, write_token_merging_trace_txt
 
 # =========================
 # CONFIG

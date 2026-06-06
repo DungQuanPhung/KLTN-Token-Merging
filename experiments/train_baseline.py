@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Baseline only (no token merging): APC + FAST_LCF_BERT on one English dataset.
 
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from thesis_apc_baseline.experiments.experiment_common import run_training
+from experiments.experiment_common import run_training
 
 
 def main():

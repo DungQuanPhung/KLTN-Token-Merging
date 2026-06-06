@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Attach FAST_LCF_BERT_TOME to PyABSA APCModelList without editing installed pyabsa."""
 
-from thesis_apc_baseline.models.fast_lcf_bert_tome import FAST_LCF_BERT_TOME
+from models.fast_lcf_bert_tome import FAST_LCF_BERT_TOME
 
 
 def register_fast_lcf_bert_tome():

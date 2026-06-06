@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """FAST_LCF_BERT + optional Token Merging (ToMe-style) after the BERT backbone."""
 
 import torch
@@ -7,7 +7,7 @@ from transformers.models.bert.modeling_bert import BertPooler
 
 from pyabsa.networks.sa_encoder import Encoder
 
-from thesis_apc_baseline.token_merging.tome_1d import ToMeSequenceMerger
+from token_merging.tome_1d import ToMeSequenceMerger
 
 
 class FAST_LCF_BERT_TOME(nn.Module):

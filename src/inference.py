@@ -7,8 +7,8 @@ from typing import Dict, List, Sequence, Tuple
 
 import torch
 
-from thesis_apc_baseline.src.model import T5AspectExtractor
-from thesis_apc_baseline.src.normalization import decode_and_normalize
+from src.model import T5AspectExtractor
+from src.normalization import decode_and_normalize
 
 
 def generate_target_text(
@@ -47,7 +47,7 @@ def predict_aspects(
     )
     if normalize:
         return decode_and_normalize(raw_text, sentence)
-    from thesis_apc_baseline.src.normalization import decode_target_text
+    from src.normalization import decode_target_text
 
     return decode_target_text(raw_text)
 
@@ -110,7 +110,7 @@ def predict_batch(
             if normalize:
                 aspects = decode_and_normalize(text, sentence)
             else:
-                from thesis_apc_baseline.src.normalization import decode_target_text
+                from src.normalization import decode_target_text
 
                 aspects = decode_target_text(text)
             all_preds.append(aspects)

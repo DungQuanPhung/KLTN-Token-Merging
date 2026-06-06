@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Multi-task FAST_LCF_BERT: aspect_category + sentiment classification.
 
 LCF semantics (LCF-ATEPC, Zeng et al. 2019):
@@ -35,7 +35,7 @@ import torch
 import torch.nn as nn
 from transformers.models.bert.modeling_bert import BertPooler
 
-from thesis_apc_baseline.token_merging.tome_1d import ToMeSequenceMerger
+from token_merging.tome_1d import ToMeSequenceMerger
 
 
 def _compute_cdw_weights(

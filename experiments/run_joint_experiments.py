@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Joint multi-task training: sentiment + category trained simultaneously.
 
 Strategy
@@ -55,13 +55,13 @@ from torch.utils.data import DataLoader
 from transformers import AutoModel, AutoTokenizer
 from sklearn.metrics import f1_score, accuracy_score, classification_report
 
-from thesis_apc_baseline.dataset_utils import (
+from dataset_utils import (
     ApcFileDataset,
     build_label_maps_from_apc,
     SENTIMENT_LABELS,
     SENTIMENT_MAP,
 )
-from thesis_apc_baseline.models.fast_lcf_bert_multitask import FastLcfBertMultiTask
+from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -112,17 +112,17 @@ CONFIGS: List[Tuple[bool, bool, bool, str, str, str, bool]] = [
     # (False, False, False, True, "bipartite", "Baseline (Cat-focus)",  "baseline_cat_focus"),
     # (False, False, False, True, "bipartite", "Baseline (Balanced)",   "baseline_balanced"),
     # Other models (use default weights) — set use_cdm=True for LCF configs to use CDM
-    (True,  True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
+    # (True,  True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
     (True,  True,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
-    (True,  True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
+    # (True,  True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
     # (False, False, True,  True,  "bipartite", "Bip (resize)",          "bip_resize"),
     # (False, False, True,  False, "bipartite", "Bip (compact)",         "bip_compact"),
-    (True,  True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
-    (True,  True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
+    # (True,  True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
+    # (True,  True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
     # (False, False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
     # (False, False, True,  False, "sequential_local", "Seq (compact)",         "seq_compact"),
-    (True,  True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
-    (True,  True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
+    # (True,  True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
+    # (True,  True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
     # (False, False, True,  True,  "attention_weighted", "Attn (resize)",       "attn_resize"),
     # (False, False, True,  False, "attention_weighted", "Attn (compact)",      "attn_compact"),
 ]
@@ -356,6 +356,24 @@ def train_joint(
             no_improve  = 0
             best_state  = copy.deepcopy(model.state_dict())
             torch.save(best_state, ckpt_dir / "best_model.pt")
+            # Save meta so pipeline_inference.py can reconstruct label maps
+            import json as _json
+            cat_id2label_local = {v: k for k, v in aspect_cat_map.items()}
+            _meta = {
+                "sentiment_labels":    SENTIMENT_LABELS,
+                "category_labels":     [cat_id2label_local[i] for i in sorted(cat_id2label_local)],
+                "num_aspect_cat":      num_aspect_cat,
+                "best_dev_f1":         round(best_dev_f1, 4),
+                "best_epoch":          best_epoch,
+                "config": {
+                    "use_lcf": use_lcf, "use_cdm": use_cdm,
+                    "use_tome": use_tome, "tome_resize": tome_resize,
+                    "merge_strategy": merge_strategy,
+                },
+            }
+            (ckpt_dir / "meta.json").write_text(
+                _json.dumps(_meta, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         else:
             no_improve += 1
             if no_improve >= PATIENCE:

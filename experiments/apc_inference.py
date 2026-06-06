@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """APC inference helpers: one sample in train-style (sentence + ``$T$`` + aspect) → PyABSA ``predict``."""
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 
 from pyabsa import AspectPolarityClassification as APC
 
-from thesis_apc_baseline.experiments.register_model import register_fast_lcf_bert_tome
+from experiments.register_model import register_fast_lcf_bert_tome
 
 TrainStyleItem = Union[
     Mapping[str, str],

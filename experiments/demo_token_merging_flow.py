@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Print token-merging trace on random embeddings (shape matches a short APC sequence).
 
 Shows length before/after each bipartite step and final resize — useful for thesis diagrams.
@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 
 import torch
 
-from thesis_apc_baseline.token_merging.tome_1d import ToMeSequenceMerger
+from token_merging.tome_1d import ToMeSequenceMerger
 
 
 def main():

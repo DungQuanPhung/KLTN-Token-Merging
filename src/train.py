@@ -16,13 +16,13 @@ if str(PARENT) not in sys.path:
 import numpy as np
 import torch
 
-from thesis_apc_baseline.src.dataset import (
+from src.dataset import (
     DEFAULT_DATA_DIR,
     create_dataloaders,
     get_raw_split_records,
 )
-from thesis_apc_baseline.src.model import T5AspectExtractor
-from thesis_apc_baseline.src.trainer import ATETrainer
+from src.model import T5AspectExtractor
+from src.trainer import ATETrainer
 
 
 def set_seed(seed: int) -> None:
