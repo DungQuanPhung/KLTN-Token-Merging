@@ -10,8 +10,8 @@ Strategy
 - Both losses are summed: loss = sent_loss + cat_loss
 - Early stopping monitors dev sentiment macro-F1.
 
-Usage (from kltn/ parent directory):
-    python thesis_apc_baseline/experiments/run_joint_experiments.py
+Usage (from thesis_apc_baseline/ directory):
+    python experiments/run_joint_experiments.py
 
 Outputs (under runs_joint/):
     experiment_results_joint.txt   ← summary table (printed to screen + file)
@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -65,11 +65,11 @@ from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
-DATASET_DIR    = ROOT / "thesis_apc_baseline" / "dataset"
+DATASET_DIR    = ROOT / "dataset"
 TRAIN_APC      = DATASET_DIR / "train.apc"
 DEV_APC        = DATASET_DIR / "dev.apc"
 TEST_APC       = DATASET_DIR / "test.apc"
-RUNS_DIR       = ROOT / "thesis_apc_baseline" / "runs_joint"
+RUNS_DIR       = ROOT / "runs_joint"
 SUPPLEMENT_DIR = DATASET_DIR / "supplement"
 
 SUPPLEMENT_FILES: List[str] = [
