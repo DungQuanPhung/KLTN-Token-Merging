@@ -1,4 +1,4 @@
-# Thesis APC Baseline
+# Thesis
 
 Dự án này chứa hai mô-đun chính:
 
@@ -158,6 +158,51 @@ Input: The food was amazing but the service was slow
   aspect='food'     sentiment=positive   category=EXPERIENCE
   aspect='service'  sentiment=negative   category=SERVICE
 ```
+
+---
+
+## 4. Inference trực tiếp: Sentiment + Category cho một aspect term
+
+Sử dụng script `infer_aspect_term.py` để dự đoán sentiment và category cho một câu + một aspect term cụ thể (không cần ATE).
+
+### Cú pháp
+
+```bash
+python infer_aspect_term.py \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --bert-name bert-base-uncased \
+  --sentence "SENTENCE_CONTAINING_ASPECT" \
+  --aspect "ASPECT_TERM"
+```
+
+### Ví dụ
+
+```bash
+python infer_aspect_term.py \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --bert-name bert-base-uncased \
+  --sentence "food is rich, a bit salty. The chef is not as polite as the restaurant service" \
+  --aspect "food"
+```
+
+### Kết quả
+
+```text
+Input sentence: food is rich, a bit salty. The chef is not as polite as the restaurant service
+Aspect term: food
+Sentiment: positive
+Category: FOOD
+```
+
+### Tham số
+
+| Tham số | Bắt buộc | Mặc định | Ý nghĩa |
+|---|---|---|---|
+| `--apc-checkpoint-dir` | Có | — | Thư mục chứa `best_model.pt` + `meta.json` |
+| `--bert-name` | Không | `bert-base-uncased` | HuggingFace BERT variant |
+| `--sentence` | Có | — | Câu đầu vào chứa aspect term |
+| `--aspect` | Có | — | Aspect term cần phân loại |
+| `--max-seq-len` | Không | `128` | Độ dài tối đa cho BERT tokenization |
 
 ---
 

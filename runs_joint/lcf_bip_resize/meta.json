@@ -13,8 +13,8 @@
     "SERVICE"
   ],
   "num_aspect_cat": 6,
-  "best_dev_f1": 74.57,
-  "best_epoch": 4,
+  "best_dev_f1": 73.84,
+  "best_epoch": 6,
   "config": {
     "use_lcf": true,
     "use_cdm": true,

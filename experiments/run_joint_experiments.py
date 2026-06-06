@@ -224,10 +224,11 @@ def evaluate(
 
     n = max(len(loader), 1)
     return {
-        "loss":          round(total_loss / n, 4),
-        "sentiment_acc": round(accuracy_score(sent_true, sent_pred) * 100, 2),
-        "sentiment_f1":  round(f1_score(sent_true, sent_pred, average="macro",  zero_division=0) * 100, 2),
-        "aspect_cat_f1": round(f1_score(cat_true,  cat_pred,  average="macro",  zero_division=0) * 100, 2),
+        "loss":            round(total_loss / n, 4),
+        "sentiment_acc":   round(accuracy_score(sent_true, sent_pred) * 100, 2),
+        "sentiment_f1":    round(f1_score(sent_true, sent_pred, average="macro",  zero_division=0) * 100, 2),
+        "aspect_cat_acc":  round(accuracy_score(cat_true, cat_pred) * 100, 2),
+        "aspect_cat_f1":   round(f1_score(cat_true,  cat_pred,  average="macro",  zero_division=0) * 100, 2),
         "sent_pred": sent_pred, "sent_true": sent_true,
         "cat_pred":  cat_pred,  "cat_true":  cat_true,
     }
@@ -426,6 +427,7 @@ def train_joint(
         **{f"sent_f1_{SENTIMENT_LABELS[i]}": round(float(sent_f1_per[i]), 2)
            for i in range(len(SENTIMENT_LABELS))},
         # Category overall
+        "aspect_cat_acc":  test_m["aspect_cat_acc"],
         "aspect_cat_f1":   test_m["aspect_cat_f1"],
         # Category per-class
         **{f"cat_f1_{cat_labels_order[i]}": round(float(cat_f1_per[i]), 2)
@@ -455,7 +457,7 @@ def print_summary_table(
     print(f"\n{'─' * W}")
     print(f"  {'Configuration':<26} {'LCF':>4} {'Strategy':<16} {'Resize':>6}"
           f" {'Time(s)':>8} {'BestEp':>7}"
-          f" {'Sent-F1':>9} {'Cat-F1':>8} {'Acc':>7}")
+          f" {'Sent-F1':>9} {'Cat-F1':>8} {'SentAcc':>8} {'CatAcc':>8}")
     print(f"{'─' * W}")
 
     baseline_time = next(
@@ -474,11 +476,8 @@ def print_summary_table(
             f"  {label:<26} {lcf_tag:>4} {strategy_tag:<16} {resize_tag:>6}"
             f" {r['train_time_sec']:>8.1f} {r['best_epoch']:>7d}"
             f" {r['sentiment_f1']:>8.2f}% {r['aspect_cat_f1']:>7.2f}%"
-            f" {r['sentiment_acc']:>6.2f}%{speedup}"
+            f" {r['sentiment_acc']:>8.2f}% {r['aspect_cat_acc']:>8.2f}%{speedup}"
         )
-
-    # ── Sentiment per-class table ─────────────────────────────────────────────
-    print(f"\n{'─' * W}")
     print(f"  {'Configuration':<26} {'LCF':>4}", end="")
     for lbl in SENTIMENT_LABELS:
         print(f" {('F1-'+lbl):>12}", end="")
@@ -624,6 +623,7 @@ def main() -> None:
               f"  (pos={r.get('sent_f1_positive',0):.1f}%"
               f"  neg={r.get('sent_f1_negative',0):.1f}%"
               f"  neu={r.get('sent_f1_neutral',0):.1f}%)")
+        print(f"  → Category Acc: {r['aspect_cat_acc']:.2f}%")
         print(f"  → Category  F1 : {r['aspect_cat_f1']:.2f}%")
 
     # ── Save outputs ───────────────────────────────────────────────────────────
@@ -640,9 +640,8 @@ def main() -> None:
         ["label", "use_lcf", "use_cdm", "use_tome", "tome_resize", "merge_strategy",
          "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
          "train_time_sec", "best_epoch",
-         "sentiment_f1", "sentiment_acc"]
+         "sentiment_f1", "sentiment_acc", "aspect_cat_acc", "aspect_cat_f1"]
         + [f"sent_f1_{l}" for l in SENTIMENT_LABELS]
-        + ["aspect_cat_f1"]
         + [f"cat_f1_{l}" for l in cat_labels_order]
     )
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
