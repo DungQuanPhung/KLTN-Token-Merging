@@ -226,3 +226,64 @@ Thư mục `dataset/` chứa:
 - Mô hình ATE lưu tốt nhất vào `checkpoints/gas_t5_ate/best/` và checkpoint cuối cùng vào `checkpoints/gas_t5_ate/last/`.
 - Khi train joint APC, `runs_joint/` chứa model và `meta.json` để `pipeline_inference.py` sử dụng lại.
 - Nếu dùng GPU, các script sẽ tự động kích hoạt CUDA khi có sẵn.
+
+---
+
+## Web UI & Full-pipeline inference (ATE → APC)
+
+
+Thư mục `server/` chứa một FastAPI API wrapper để gọi `pipeline_inference.PipelineInference` và trả về kết quả JSON (mỗi aspect gồm 3 label: `aspect`, `sentiment`, `category`). Thư mục `frontend/` là một React app tối thiểu để test nhanh: nhập một câu hoặc upload một file (`.txt` hoặc `.docx`, mỗi dòng một câu).
+
+1) Cài đặt dependencies (từ root project; file `requirements.txt` đã bao gồm `torch`/`transformers`):
+
+```bash
+python -m pip install -r requirements.txt
+pip install fastapi uvicorn python-docx
+```
+
+2) Cấu hình biến môi trường cho backend (hoặc sửa trực tiếp trong `server/app.py`) và chạy bằng `uvicorn`:
+
+> Lưu ý: khi copy vào terminal **không** kèm phần chú thích trên cùng dòng. Ví dụ: `set CLAUSE_SPLIT=1  # comment` sẽ lưu cả phần `# comment` vào biến và gây lỗi.
+
+```bash
+# Windows (cmd)
+set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best && set APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize && set BERT_NAME=bert-base-uncased && set CLAUSE_SPLIT=1 && uvicorn server.app:app --host 0.0.0.0 --port 5000
+
+# PowerShell
+uvicorn server.app:app --host 0.0.0.0 --port 5000
+```
+
+3) Chạy frontend (mở terminal trong `frontend/`):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+4) Sử dụng UI
+
+- Chọn `Single sentence` để nhập trực tiếp một câu rồi nhấn `Predict`.
+- Chọn `Upload file` để gửi `.txt` hoặc `.docx` (mỗi dòng 1 câu). Kết quả trả về là một mảng cho mỗi dòng; mỗi phần tử chứa danh sách các aspect với 3 label: `aspect`, `sentiment`, `category`.
+
+5) Curl ví dụ (JSON single sentence):
+
+```bash
+curl -X POST http://localhost:5000/predict -H "Content-Type: application/json" -d '{"text": "The food was amazing but the service was slow"}'
+```
+
+6) Curl ví dụ (upload file):
+
+```bash
+curl -X POST http://localhost:5000/batch_predict -F file=@sentences.txt
+```
+
+Ghi chú: backend sẽ load mô hình khi khởi động — việc này có thể mất vài phút nếu lần đầu tải trọng số lớn.
+
+---
+Ghi chú: backend sẽ load mô hình khi khởi động — việc này có thể mất vài phút nếu lần đầu tải trọng số lớn.
+
+---
+
+---
+
