@@ -133,20 +133,20 @@ Sử dụng pipeline 2 bước để dự đoán aspect + sentiment + category.
 ### Dự đoán 1 câu
 
 ```bash
-python pipeline_inference.py \
-  --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --bert-name bert-base-uncased \
-  --sentence "The food was amazing but the service was slow"
+python pipeline_inference.py 
+  --ate-checkpoint checkpoints/gas_t5_ate/best 
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize 
+  --bert-name bert-base-uncased 
+  --sentence "The food was amazing but the service was slow" --clause-split
 ```
 
 ### Chế độ interactive (nhập nhiều câu)
 
 ```bash
-python pipeline_inference.py \
-  --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --bert-name bert-base-uncased
+python pipeline_inference.py 
+  --ate-checkpoint checkpoints/gas_t5_ate/best 
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize 
+  --bert-name bert-base-uncased --clause-split
 ```
 
 Sau đó nhập nhiều câu, nhấn Enter dòng trống để thoát.

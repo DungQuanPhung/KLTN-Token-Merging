@@ -1,2 +1,2 @@
 label,use_lcf,use_cdm,use_tome,tome_resize,merge_strategy,task_weight_sent,task_weight_cat,es_weight_sent,es_weight_cat,train_time_sec,best_epoch,sentiment_f1,sentiment_acc,aspect_cat_acc,aspect_cat_f1,sent_f1_positive,sent_f1_negative,sent_f1_neutral,cat_f1_AMENITY,cat_f1_BRANDING,cat_f1_EXPERIENCE,cat_f1_FACILITY,cat_f1_LOYALTY,cat_f1_SERVICE
-LCF+Bip (resize),True,True,True,True,bipartite,1.0,1.0,0.5,0.5,851.66,6,75.0,95.51,90.71,86.84,97.7,84.44,42.86,92.41,72.73,77.19,90.29,92.31,96.13
+LCF+Bip (resize),True,True,True,True,bipartite,1.0,1.0,0.5,0.5,825.14,6,73.75,95.19,91.03,88.48,97.53,83.72,40.0,92.41,83.33,75.86,89.76,92.31,97.21

@@ -31,6 +31,8 @@ import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
+from clause_splitting import extract_aspect_clause
+
 # ─── Label maps ───────────────────────────────────────────────────────────────
 
 SENTIMENT_MAP: Dict[str, int] = {"positive": 0, "negative": 1, "neutral": 2}
@@ -311,6 +313,7 @@ class ApcFileDataset(Dataset):
         aspect_cat_map: Dict[str, int],
         max_seq_len: int = 128,
         supplement_paths: Optional[List[str]] = None,
+        clause_split: bool = False,
     ) -> None:
         """
         Args:
@@ -323,6 +326,8 @@ class ApcFileDataset(Dataset):
                                to training data (typically only for train split).
                                These samples set is_supplement=True and are
                                excluded from category-head training.
+            clause_split     : when True, replace each sentence with the clause
+                               containing its aspect term before tokenisation.
         """
         raw = parse_apc_file(apc_path)
 
@@ -341,6 +346,24 @@ class ApcFileDataset(Dataset):
                 f"[ApcFileDataset] {Path(apc_path).name}:"
                 f" {n_main} main + {n_supp} supplement = {len(raw)} total samples"
                 f" (supplement trains sentiment head only)"
+            )
+
+        # Clause-level preprocessing: narrow each sentence to the clause
+        # containing its aspect term and adjust character offsets accordingly.
+        if clause_split:
+            n_shortened = 0
+            for r in raw:
+                clause, new_cs, new_ce = extract_aspect_clause(
+                    r["text"], r["aspect_char_start"], r["aspect_char_end"]
+                )
+                if clause != r["text"]:
+                    n_shortened += 1
+                r["text"]              = clause
+                r["aspect_char_start"] = new_cs
+                r["aspect_char_end"]   = new_ce
+            print(
+                f"[ApcFileDataset] clause_split=True:"
+                f" {n_shortened}/{len(raw)} samples shortened to aspect clause"
             )
 
         pad_or_unk = tokenizer.pad_token or tokenizer.unk_token or "[PAD]"

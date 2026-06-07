@@ -90,6 +90,13 @@ DROPOUT          = 0.1
 NUM_HEADS        = 8
 SRD_THRESHOLD    = 5  # LCF-ATEPC CDW full-weight radius α (paper default)
 TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
+
+# ── Preprocessing config ──────────────────────────────────────────────────────
+# When True, each sentence is replaced by the clause containing its aspect term
+# before tokenisation.  Boundaries: comma, semicolon, but, yet, however,
+# although, though, whereas.  Set False to use full sentences (default).
+USE_CLAUSE_SPLIT = True
+
 # Default loss and early stopping weights
 DEFAULT_TASK_WEIGHT_SENT = 1.0  # 1.317
 DEFAULT_TASK_WEIGHT_CAT  = 1.0
@@ -370,6 +377,7 @@ def train_joint(
                     "use_lcf": use_lcf, "use_cdm": use_cdm,
                     "use_tome": use_tome, "tome_resize": tome_resize,
                     "merge_strategy": merge_strategy,
+                    "clause_split": USE_CLAUSE_SPLIT,
                 },
             }
             (ckpt_dir / "meta.json").write_text(
@@ -544,13 +552,16 @@ def main() -> None:
     # train_ds: main + supplement  (sentiment head uses ALL samples)
     #           is_supplement=True for supplement rows → category head ignores them
     # dev/test: main only
-    print("\nBuilding datasets …")
+    print(f"\nBuilding datasets … (clause_split={USE_CLAUSE_SPLIT})")
     train_ds = ApcFileDataset(
         str(TRAIN_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN,
         supplement_paths=avail_supplements or None,
+        clause_split=USE_CLAUSE_SPLIT,
     )
-    dev_ds  = ApcFileDataset(str(DEV_APC),  tokenizer, aspect_cat_map, MAX_SEQ_LEN)
-    test_ds = ApcFileDataset(str(TEST_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN)
+    dev_ds  = ApcFileDataset(str(DEV_APC),  tokenizer, aspect_cat_map, MAX_SEQ_LEN,
+                             clause_split=USE_CLAUSE_SPLIT)
+    test_ds = ApcFileDataset(str(TEST_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN,
+                             clause_split=USE_CLAUSE_SPLIT)
 
     from collections import Counter
     cnt   = Counter(int(s["sentiment_label"]) for s in train_ds.samples)

@@ -40,6 +40,7 @@ from transformers import AutoModel, AutoTokenizer
 
 from src.model import T5AspectExtractor
 from src.inference import predict_aspects
+from clause_splitting import extract_aspect_clause, split_into_clauses
 
 
 SENTIMENT_LABELS = ["positive", "negative", "neutral"]
@@ -58,13 +59,15 @@ class APCPredictor:
         category_labels: List[str],
         device: torch.device,
         max_seq_len: int = 128,
+        clause_split: bool = False,
     ) -> None:
-        self.model           = model
-        self.tokenizer       = tokenizer
+        self.model            = model
+        self.tokenizer        = tokenizer
         self.sentiment_labels = sentiment_labels
         self.category_labels  = category_labels
-        self.device          = device
-        self.max_seq_len     = max_seq_len
+        self.device           = device
+        self.max_seq_len      = max_seq_len
+        self.clause_split     = clause_split
         self.model.to(device)
         self.model.eval()
 
@@ -131,9 +134,12 @@ class APCPredictor:
         state = torch.load(str(weight_path), map_location=dev)
         model.load_state_dict(state)
 
+        clause_split: bool = cfg.get("clause_split", False)
+
         tokenizer = AutoTokenizer.from_pretrained(bert_name)
         print(f"[APC] Loaded weights from {weight_path.name}")
         print(f"[APC] sentiment={sentiment_labels}  categories={category_labels}")
+        print(f"[APC] clause_split={clause_split}")
 
         return cls(
             model=model,
@@ -142,6 +148,7 @@ class APCPredictor:
             category_labels=category_labels,
             device=dev,
             max_seq_len=max_seq_len,
+            clause_split=clause_split,
         )
 
     @torch.no_grad()
@@ -150,7 +157,18 @@ class APCPredictor:
 
         Tokenisation follows SPC format: [CLS] text [SEP] aspect [SEP]
         LCF vec: binary 1.0 at aspect subword positions in segment A.
+
+        When ``self.clause_split`` is True (read from meta.json), the sentence
+        is narrowed to the clause containing the aspect before tokenisation —
+        matching the preprocessing applied during training.
         """
+        asp_stripped = aspect.strip()
+        asp_cs = text.find(asp_stripped)
+        asp_ce = asp_cs + len(asp_stripped) - 1 if asp_cs >= 0 else -1
+
+        if self.clause_split and asp_cs >= 0:
+            text, asp_cs, asp_ce = extract_aspect_clause(text, asp_cs, asp_ce)
+
         enc = self.tokenizer(
             text,
             aspect,
@@ -167,8 +185,6 @@ class APCPredictor:
         offsets        = enc["offset_mapping"].squeeze(0)
 
         # Build LCF vec: mark aspect tokens in segment A by char overlap
-        asp_cs = text.find(aspect.strip())
-        asp_ce = asp_cs + len(aspect.strip()) - 1 if asp_cs >= 0 else -1
         lcf_vec = torch.zeros(input_ids.shape[-1], dtype=torch.float32)
 
         if asp_cs >= 0:
@@ -214,21 +230,27 @@ class APCPredictor:
 class PipelineInference:
     """Two-stage pipeline: ATE (T5) → APC (BERT multitask).
 
+    When ``clause_split=True`` the sentence is split into clauses first;
+    each clause is processed by ATE and APC independently, so aspects
+    are always classified against the clause they belong to.
+
     Pipeline.predict(sentence) returns one dict per extracted aspect term:
         [
             {"aspect": "food",    "sentiment": "positive", "category": "FOOD"},
             {"aspect": "service", "sentiment": "negative",  "category": "SERVICE"},
         ]
-    If ATE finds no aspects, returns [].
+    If ATE finds no aspects in any clause, returns [].
     """
 
     def __init__(
         self,
         ate_model: T5AspectExtractor,
         apc_model: APCPredictor,
+        clause_split: bool = False,
     ) -> None:
-        self.ate = ate_model
-        self.apc = apc_model
+        self.ate          = ate_model
+        self.apc          = apc_model
+        self.clause_split = clause_split
 
     @classmethod
     def load(
@@ -238,6 +260,7 @@ class PipelineInference:
         bert_name: str = "bert-base-uncased",
         device: Optional[torch.device] = None,
         max_seq_len: int = 128,
+        clause_split: bool = False,
     ) -> "PipelineInference":
         """Load both checkpoints.
 
@@ -247,6 +270,7 @@ class PipelineInference:
                                   + meta.json — output of run_joint_experiments.py
                                   e.g. runs_joint/lcf_only/
             bert_name           : BERT variant used for APC training
+            clause_split        : split sentence into clauses before ATE+APC
         """
         dev = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -261,19 +285,26 @@ class PipelineInference:
             max_seq_len=max_seq_len,
         )
 
-        return cls(ate_model=ate, apc_model=apc)
+        print(f"[pipeline] clause_split={clause_split}")
+        return cls(ate_model=ate, apc_model=apc, clause_split=clause_split)
+
+    def _predict_on_text(self, text: str) -> List[Dict[str, str]]:
+        """Run ATE → APC on a single text (full sentence or one clause)."""
+        aspects = predict_aspects(self.ate, text)
+        return [{"aspect": a, **self.apc.predict_one(text, a)} for a in aspects]
 
     def predict(self, sentence: str) -> List[Dict[str, str]]:
-        """Run the full pipeline on one sentence."""
-        aspects = predict_aspects(self.ate, sentence)
-        if not aspects:
-            return []
+        """Run the full pipeline on one sentence.
 
-        results = []
-        for aspect in aspects:
-            label = self.apc.predict_one(sentence, aspect)
-            results.append({"aspect": aspect, **label})
-        return results
+        If ``clause_split=True``: split sentence → each clause → ATE → APC.
+        Otherwise: ATE → APC on the full sentence.
+        """
+        if self.clause_split:
+            results = []
+            for clause_text, _ in split_into_clauses(sentence):
+                results.extend(self._predict_on_text(clause_text))
+            return results
+        return self._predict_on_text(sentence)
 
     def predict_batch(
         self,
@@ -281,6 +312,9 @@ class PipelineInference:
         ate_batch_size: int = 16,
     ) -> List[List[Dict[str, str]]]:
         """Run pipeline on multiple sentences."""
+        if self.clause_split:
+            return [self.predict(s) for s in sentences]
+
         from src.inference import predict_batch as ate_predict_batch
 
         all_aspects = ate_predict_batch(
@@ -292,10 +326,7 @@ class PipelineInference:
             if not aspects:
                 all_results.append([])
                 continue
-            row = []
-            for aspect in aspects:
-                label = self.apc.predict_one(sentence, aspect)
-                row.append({"aspect": aspect, **label})
+            row = [{"aspect": a, **self.apc.predict_one(sentence, a)} for a in aspects]
             all_results.append(row)
         return all_results
 
@@ -316,12 +347,16 @@ def main() -> None:
     parser.add_argument("--bert-name", default="bert-base-uncased")
     parser.add_argument("--sentence", default=None,
                         help="Single sentence to predict (interactive if omitted)")
+    parser.add_argument("--clause-split", action="store_true", default=False,
+                        help="Split sentence into clauses before ATE+APC "
+                             "(each clause is processed independently)")
     args = parser.parse_args()
 
     pipe = PipelineInference.load(
         ate_checkpoint=args.ate_checkpoint,
         apc_checkpoint_dir=args.apc_checkpoint_dir,
         bert_name=args.bert_name,
+        clause_split=args.clause_split,
     )
 
     if args.sentence:
