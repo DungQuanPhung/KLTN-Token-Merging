@@ -45,12 +45,6 @@ from clause_splitting import extract_aspect_clause, split_into_clauses
 
 SENTIMENT_LABELS = ["positive", "negative", "neutral"]
 
-# Pronouns that should never appear as aspect terms — when ATE extracts one of
-# these, it is a co-reference to an aspect mentioned in a prior clause.
-_PRONOUN_ASPECTS: frozenset[str] = frozenset({
-    "it", "its", "they", "them", "their", "this", "that", "these", "those",
-})
-
 
 # ─── APC wrapper ──────────────────────────────────────────────────────────────
 
@@ -294,46 +288,66 @@ class PipelineInference:
         print(f"[pipeline] clause_split={clause_split}")
         return cls(ate_model=ate, apc_model=apc, clause_split=clause_split)
 
+    # Pronouns that should be resolved to the most recent aspect from the
+    # previous clause rather than being treated as a new aspect term.
+    _RESOLVE_PRONOUNS: frozenset = frozenset({"it"})
+
+    @staticmethod
+    def _is_pronoun(aspect: str) -> bool:
+        return aspect.strip().lower() in PipelineInference._RESOLVE_PRONOUNS
+
     def _predict_on_text(self, text: str) -> List[Dict[str, str]]:
         """Run ATE → APC on a single text (full sentence or one clause)."""
         aspects = predict_aspects(self.ate, text)
         return [{"aspect": a, **self.apc.predict_one(text, a)} for a in aspects]
 
-    @staticmethod
-    def _is_pronoun(term: str) -> bool:
-        return term.strip().lower() in _PRONOUN_ASPECTS
-
     def predict(self, sentence: str) -> List[Dict[str, str]]:
         """Run the full pipeline on one sentence.
 
         If ``clause_split=True``: split sentence → each clause → ATE → APC.
-        Pronoun resolution: if ATE extracts a pronoun (e.g. "it") as an aspect
-        term, it is silently replaced by the last non-pronoun aspect seen in a
-        prior clause.  If no prior aspect exists the pronoun-aspect is dropped.
+        Pronoun resolution: if ATE returns ``"it"`` for a clause, it is
+        replaced by the last valid aspect term extracted from a previous
+        clause.  If no previous aspect is available, the pronoun is skipped.
 
-        Otherwise: ATE → APC on the full sentence.
+        Otherwise: ATE → APC on the full sentence (``"it"`` aspects are
+        skipped because no clause context exists to resolve them).
         """
         if self.clause_split:
             results: List[Dict[str, str]] = []
-            last_valid_aspect: Optional[str] = None
+            # Last non-pronoun aspect seen in any *previous* clause.
+            prev_clause_aspect: Optional[str] = None
 
             for clause_text, _ in split_into_clauses(sentence):
-                aspects = predict_aspects(self.ate, clause_text)
-                for a in aspects:
-                    if self._is_pronoun(a):
-                        # Resolve to previous aspect; skip if none available
-                        if last_valid_aspect is None:
+                clause_aspects = predict_aspects(self.ate, clause_text)
+                # Track the last valid aspect within this clause separately so
+                # that prev_clause_aspect only advances after the clause ends.
+                current_clause_last: Optional[str] = None
+
+                for aspect in clause_aspects:
+                    if self._is_pronoun(aspect):
+                        if prev_clause_aspect is None:
+                            # Cannot resolve pronoun — no previous aspect.
                             continue
-                        resolved = last_valid_aspect
-                        apc_out = self.apc.predict_one(clause_text, resolved)
-                        results.append({"aspect": resolved, **apc_out})
+                        resolved = prev_clause_aspect
                     else:
-                        apc_out = self.apc.predict_one(clause_text, a)
-                        results.append({"aspect": a, **apc_out})
-                        last_valid_aspect = a
+                        resolved = aspect
+                        current_clause_last = aspect
+
+                    results.append({
+                        "aspect": resolved,
+                        **self.apc.predict_one(clause_text, resolved),
+                    })
+
+                if current_clause_last is not None:
+                    prev_clause_aspect = current_clause_last
 
             return results
-        return self._predict_on_text(sentence)
+
+        # No clause splitting — skip unresolvable pronoun aspects.
+        return [
+            r for r in self._predict_on_text(sentence)
+            if not self._is_pronoun(r["aspect"])
+        ]
 
     def predict_batch(
         self,
@@ -355,7 +369,11 @@ class PipelineInference:
             if not aspects:
                 all_results.append([])
                 continue
-            row = [{"aspect": a, **self.apc.predict_one(sentence, a)} for a in aspects]
+            row = [
+                {"aspect": a, **self.apc.predict_one(sentence, a)}
+                for a in aspects
+                if not self._is_pronoun(a)
+            ]
             all_results.append(row)
         return all_results
 

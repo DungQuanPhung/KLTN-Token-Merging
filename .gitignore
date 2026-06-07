@@ -18,3 +18,5 @@ runs_joint/
 # OS
 .DS_Store
 Thumbs.db
+
+frontend/dist/
