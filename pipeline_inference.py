@@ -45,6 +45,12 @@ from clause_splitting import extract_aspect_clause, split_into_clauses
 
 SENTIMENT_LABELS = ["positive", "negative", "neutral"]
 
+# Pronouns that should never appear as aspect terms — when ATE extracts one of
+# these, it is a co-reference to an aspect mentioned in a prior clause.
+_PRONOUN_ASPECTS: frozenset[str] = frozenset({
+    "it", "its", "they", "them", "their", "this", "that", "these", "those",
+})
+
 
 # ─── APC wrapper ──────────────────────────────────────────────────────────────
 
@@ -293,16 +299,39 @@ class PipelineInference:
         aspects = predict_aspects(self.ate, text)
         return [{"aspect": a, **self.apc.predict_one(text, a)} for a in aspects]
 
+    @staticmethod
+    def _is_pronoun(term: str) -> bool:
+        return term.strip().lower() in _PRONOUN_ASPECTS
+
     def predict(self, sentence: str) -> List[Dict[str, str]]:
         """Run the full pipeline on one sentence.
 
         If ``clause_split=True``: split sentence → each clause → ATE → APC.
+        Pronoun resolution: if ATE extracts a pronoun (e.g. "it") as an aspect
+        term, it is silently replaced by the last non-pronoun aspect seen in a
+        prior clause.  If no prior aspect exists the pronoun-aspect is dropped.
+
         Otherwise: ATE → APC on the full sentence.
         """
         if self.clause_split:
-            results = []
+            results: List[Dict[str, str]] = []
+            last_valid_aspect: Optional[str] = None
+
             for clause_text, _ in split_into_clauses(sentence):
-                results.extend(self._predict_on_text(clause_text))
+                aspects = predict_aspects(self.ate, clause_text)
+                for a in aspects:
+                    if self._is_pronoun(a):
+                        # Resolve to previous aspect; skip if none available
+                        if last_valid_aspect is None:
+                            continue
+                        resolved = last_valid_aspect
+                        apc_out = self.apc.predict_one(clause_text, resolved)
+                        results.append({"aspect": resolved, **apc_out})
+                    else:
+                        apc_out = self.apc.predict_one(clause_text, a)
+                        results.append({"aspect": a, **apc_out})
+                        last_valid_aspect = a
+
             return results
         return self._predict_on_text(sentence)
 
