@@ -15,7 +15,7 @@ LCF semantics (LCF-ATEPC, Zeng et al. 2019):
     the two-stream design from the original paper.
 
 Architecture:
-    BERT  →  [ToMe]  →  split:
+    Encoder (T5/BERT)  →  [ToMe]  →  split:
         local  = hidden * CDW(lcf_vec)   →  SA
         global = hidden
     →  cat(local, global)  →  Linear(2H→H)  →  Dropout
@@ -33,9 +33,23 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from transformers.models.bert.modeling_bert import BertPooler
-
 from token_merging.tome_1d import ToMeSequenceMerger
+
+
+class _SimplePooler(nn.Module):
+    """CLS-token pooler: Linear + Tanh on the first token position.
+
+    Works for any encoder (BERT, T5, etc.) — avoids BertPooler's hard
+    dependency on bert.config.hidden_size.
+    """
+
+    def __init__(self, hidden_size: int) -> None:
+        super().__init__()
+        self.dense = nn.Linear(hidden_size, hidden_size)
+        self.activation = nn.Tanh()
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.activation(self.dense(hidden_states[:, 0]))
 
 
 def _compute_cdw_weights(
@@ -140,7 +154,7 @@ class FastLcfBertMultiTask(nn.Module):
     """Multi-task BERT model: predicts sentiment AND aspect_category jointly.
 
     Args:
-        bert           : HuggingFace BERT model (AutoModel / BertModel).
+        bert           : HuggingFace encoder model (T5EncoderModel / BertModel / AutoModel).
         num_sentiment  : number of sentiment classes (default 3).
         num_aspect_cat : number of aspect-category classes.
         use_lcf        : enable Local Context Focus masking.
@@ -174,13 +188,13 @@ class FastLcfBertMultiTask(nn.Module):
         self._tome_resize = tome_resize
         self._srd_threshold = srd_threshold
 
-        H = bert.config.hidden_size
+        H = getattr(bert.config, "hidden_size", None) or getattr(bert.config, "d_model", 768)
 
         self.dropout = nn.Dropout(dropout)
         self.bert_SA = _SALayer(H, num_heads, dropout)   # after LCF masking
         self.linear2 = nn.Linear(H * 2, H)              # fuse lcf + global
         self.bert_SA_ = _SALayer(H, num_heads, dropout)  # before pooling
-        self.bert_pooler = BertPooler(bert.config)
+        self.bert_pooler = _SimplePooler(H)
 
         self.dense_sentiment = nn.Linear(H, num_sentiment)
         self.dense_aspect_cat = nn.Linear(H, num_aspect_cat)

@@ -52,7 +52,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, T5EncoderModel, AutoTokenizer
 from sklearn.metrics import f1_score, accuracy_score, classification_report
 
 from dataset_utils import (
@@ -77,9 +77,23 @@ SUPPLEMENT_FILES: List[str] = [
     str(SUPPLEMENT_DIR / "neutral.tsv"),
 ]
 
-# ─── Hyperparameters ──────────────────────────────────────────────────────────
+# ─── Model selection ──────────────────────────────────────────────────────────
+# Change MODEL_TYPE to switch between encoders.  Add new entries to
+# _MODEL_CONFIGS to register additional pretrained checkpoints.
 
-PRETRAINED_BERT  = "bert-base-uncased"
+MODEL_TYPE = "t5"   # "bert" | "t5"
+
+_MODEL_CONFIGS = {
+    "bert": "bert-base-uncased",
+    "t5":   "t5-base",
+}
+
+if MODEL_TYPE not in _MODEL_CONFIGS:
+    raise ValueError(f"Unknown MODEL_TYPE={MODEL_TYPE!r}. Choose from: {list(_MODEL_CONFIGS)}")
+
+PRETRAINED_MODEL = _MODEL_CONFIGS[MODEL_TYPE]
+
+# ─── Hyperparameters ──────────────────────────────────────────────────────────
 SEED             = 42
 NUM_EPOCHS       = 15
 PATIENCE         = 4
@@ -150,6 +164,13 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def _load_encoder(model_type: str, pretrained: str):
+    """Load the correct HuggingFace encoder for the given model_type."""
+    if model_type == "t5":
+        return T5EncoderModel.from_pretrained(pretrained)
+    return AutoModel.from_pretrained(pretrained)
 
 
 def get_weights_for_config(short_id: str) -> Tuple[float, float, float, float]:
@@ -290,7 +311,7 @@ def train_joint(
     dev_loader   = DataLoader(dev_ds,   batch_size=BATCH_SIZE, shuffle=False)
     test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False)
 
-    bert = AutoModel.from_pretrained(PRETRAINED_BERT)
+    bert = _load_encoder(MODEL_TYPE, PRETRAINED_MODEL)
     model = FastLcfBertMultiTask(
         bert=bert,
         num_sentiment=num_sentiment,
@@ -546,7 +567,7 @@ def main() -> None:
 
     set_seed(SEED)
     print(f"Device  : {DEVICE}")
-    print(f"Model   : {PRETRAINED_BERT}")
+    print(f"Model   : {PRETRAINED_MODEL} (type={MODEL_TYPE})")
     print(f"Seed    : {SEED}")
     print(f"Runs dir: {RUNS_DIR}\n")
 
@@ -561,7 +582,7 @@ def main() -> None:
         avail_supplements = []
         print("Supplement: disabled (USE_SUPPLEMENT=False)")
 
-    tokenizer = AutoTokenizer.from_pretrained(PRETRAINED_BERT)
+    tokenizer = AutoTokenizer.from_pretrained(PRETRAINED_MODEL)
     sentiment_map, aspect_cat_map = build_label_maps_from_apc(
         str(TRAIN_APC), str(DEV_APC), str(TEST_APC),
     )
