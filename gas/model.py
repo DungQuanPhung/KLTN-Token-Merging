@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
-"""T5 wrapper for Generative Aspect Sentiment (GAS) extraction.
+"""T5 wrapper for single-stage GAS (Generative Aspect Sentiment) extraction.
 
-Input  : raw sentence
-Output : "(aspect1, positive); (aspect2, negative)"
+The model predicts ALL THREE labels in a single decoder pass:
+
+    Input  : raw sentence
+    Output : "(food, FOOD, positive); (service, SERVICE, negative)"
+
+This mirrors the GAS method from Zhang et al. 2021, extended to include
+the aspect category as the middle field of each tuple.
 
 Aspect terms in the generated string are post-processed with Levenshtein
-n-gram normalization (same technique used by the ATE T5 model) to correct
-minor generation errors.  Sentiment labels are validated against the fixed
-vocabulary {positive, negative, neutral}.
+n-gram normalization to correct minor generation errors (same technique
+used by the ATE T5 baseline in ``src/``).
 """
 
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -30,17 +34,24 @@ from src.normalization import build_ngram_vocabulary, normalize_aspect
 
 @dataclass
 class GenerationConfig:
-    max_length:    int  = 128
-    num_beams:     int  = 4
+    max_length:     int  = 128
+    num_beams:      int  = 4
     early_stopping: bool = True
 
 
 class GasT5Model:
-    """T5-based generative model that extracts (aspect_term, sentiment) pairs.
+    """T5-based model that jointly extracts (aspect_term, category, sentiment).
 
-    Architecture is identical to T5AspectExtractor in ``src/model.py``, but
-    the target format is "(aspect, sentiment)" instead of "(aspect)" only,
-    and the output parser understands that format.
+    Usage — inference
+    -----------------
+    >>> model = GasT5Model.from_pretrained("checkpoints/gas_t5/best")
+    >>> model.predict_one("The food was great but service was slow")
+    [("food", "FOOD", "positive"), ("service", "SERVICE", "negative")]
+
+    Usage — training
+    ----------------
+    Use ``gas.dataset.create_gas_dataloaders()`` to build DataLoaders, then
+    wrap this model in a ``gas.trainer.GasTrainer``.
     """
 
     def __init__(
@@ -85,7 +96,7 @@ class GasT5Model:
         obj.model.eval()
         return obj
 
-    # ── Generation ────────────────────────────────────────────────────────────
+    # ── Low-level generation ──────────────────────────────────────────────────
 
     def _generate_ids(
         self,
@@ -110,15 +121,6 @@ class GasT5Model:
                 **gen_kwargs,
             )
 
-    def _encode(self, sentence: str, max_input_length: int = 128) -> dict:
-        return self.tokenizer(
-            sentence,
-            max_length=max_input_length,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        )
-
     # ── Inference ─────────────────────────────────────────────────────────────
 
     def predict_one(
@@ -126,11 +128,17 @@ class GasT5Model:
         sentence: str,
         normalize: bool = True,
         max_input_length: int = 128,
-    ) -> List[Tuple[str, str]]:
-        """Return [(aspect_term, sentiment), ...] for one sentence."""
-        enc       = self._encode(sentence, max_input_length)
-        gen_ids   = self._generate_ids(enc["input_ids"], enc["attention_mask"])
-        raw_text  = self.tokenizer.decode(gen_ids[0], skip_special_tokens=True)
+    ) -> List[Tuple[str, str, str]]:
+        """Return [(aspect_term, category, sentiment), ...] for one sentence."""
+        enc = self.tokenizer(
+            sentence,
+            max_length=max_input_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )
+        gen_ids  = self._generate_ids(enc["input_ids"], enc["attention_mask"])
+        raw_text = self.tokenizer.decode(gen_ids[0], skip_special_tokens=True)
         return _decode_and_normalize(raw_text, sentence, normalize)
 
     def predict_for_records(
@@ -138,23 +146,23 @@ class GasT5Model:
         records: Sequence[dict],
         normalize: bool = True,
         max_input_length: int = 128,
-    ) -> Tuple[List[List[Tuple[str, str]]], List[List[Tuple[str, str]]]]:
-        """Run GAS inference over a list of records.
+    ) -> Tuple[List[List[Tuple[str, str, str]]], List[List[Tuple[str, str, str]]]]:
+        """Run inference over a list of records.
 
         Returns
         -------
-        predictions : one List[(aspect, sentiment)] per record
-        golds       : gold ``aspects_sentiments`` from each record
+        predictions : one List[(aspect, category, sentiment)] per record
+        golds       : gold ``gold_triples`` from each record
         """
-        predictions: List[List[Tuple[str, str]]] = []
-        golds:       List[List[Tuple[str, str]]] = []
+        predictions: List[List[Tuple[str, str, str]]] = []
+        golds:       List[List[Tuple[str, str, str]]] = []
 
         for row in records:
-            sentence   = str(row["input_text"])
-            gold_pairs = list(row.get("aspects_sentiments") or [])
-            pred_pairs = self.predict_one(sentence, normalize, max_input_length)
-            predictions.append(pred_pairs)
-            golds.append(gold_pairs)
+            sentence     = str(row["input_text"])
+            gold_triples = list(row.get("gold_triples") or [])
+            pred_triples = self.predict_one(sentence, normalize, max_input_length)
+            predictions.append(pred_triples)
+            golds.append(gold_triples)
 
         return predictions, golds
 
@@ -164,9 +172,9 @@ class GasT5Model:
         batch_size: int = 16,
         normalize:  bool = True,
         max_input_length: int = 128,
-    ) -> List[List[Tuple[str, str]]]:
-        """Run GAS inference on a list of sentences with mini-batching."""
-        all_preds: List[List[Tuple[str, str]]] = []
+    ) -> List[List[Tuple[str, str, str]]]:
+        """Run inference on a list of sentences with mini-batching."""
+        all_preds: List[List[Tuple[str, str, str]]] = []
         self.model.eval()
 
         for start in range(0, len(sentences), batch_size):
@@ -178,9 +186,8 @@ class GasT5Model:
                 truncation=True,
                 return_tensors="pt",
             )
-            gen_ids  = self._generate_ids(enc["input_ids"], enc["attention_mask"])
-            decoded  = self.tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
-
+            gen_ids = self._generate_ids(enc["input_ids"], enc["attention_mask"])
+            decoded = self.tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
             for sentence, raw_text in zip(chunk, decoded):
                 all_preds.append(_decode_and_normalize(raw_text, sentence, normalize))
 
@@ -193,13 +200,17 @@ def _decode_and_normalize(
     raw_text: str,
     sentence: str,
     normalize: bool,
-) -> List[Tuple[str, str]]:
-    """Parse raw generated text and optionally normalize aspect terms."""
-    pairs = parse_gas_target(raw_text)
-    if not normalize or not pairs:
-        return pairs
+) -> List[Tuple[str, str, str]]:
+    """Parse generated text and optionally normalize aspect terms.
+
+    Only the aspect term field is normalized against sentence n-grams;
+    category and sentiment are kept as generated by the model.
+    """
+    triples = parse_gas_target(raw_text)
+    if not normalize or not triples:
+        return triples
     vocab = build_ngram_vocabulary(sentence)
     return [
-        (normalize_aspect(aspect, vocab), sentiment)
-        for aspect, sentiment in pairs
+        (normalize_aspect(aspect, vocab), category, sentiment)
+        for aspect, category, sentiment in triples
     ]

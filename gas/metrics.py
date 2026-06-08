@@ -1,28 +1,33 @@
 # -*- coding: utf-8 -*-
-"""Evaluation metrics for 3-label ABSA (aspect term / category / sentiment).
+"""Evaluation metrics for 3-label ABSA: aspect term / category / sentiment / joint.
 
 All metrics use **micro-averaged** precision, recall, and F1 computed over
-individual predictions (not per-sentence averages) — consistent with the
-standard ABSA evaluation protocol used in GAS, PARAPHRASE, etc.
+individual predictions — consistent with the standard ABSA evaluation protocol
+(GAS, PARAPHRASE, MvP, etc.).
+
+The single-stage GAS model generates all three labels simultaneously, so all
+four metrics are derived from the same set of predictions.
 
 Metric definitions
 ------------------
-aspect_term  : TP when predicted aspect term exactly matches a gold term.
-sentiment    : TP when (aspect_term, sentiment) pair exactly matches gold.
-category     : TP when (aspect_term, category) pair exactly matches gold.
-joint        : TP when (aspect_term, category, sentiment) triple all match gold.
-               A prediction that gets 2 out of 3 labels correct contributes 0 TP.
+aspect_term : TP when predicted aspect string exactly matches a gold term.
+category    : TP when (aspect_term, category) pair exactly matches gold.
+sentiment   : TP when (aspect_term, sentiment) pair exactly matches gold.
+joint       : TP when (aspect_term, category, sentiment) triple all match gold.
+              Getting 2 out of 3 correct counts as 0 TP (pure FP + FN).
+
+All comparisons use .strip() normalisation; no case folding.
 """
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, List, Tuple
 
 
-# ─── Core PRF computation ─────────────────────────────────────────────────────
+# ─── Core PRF ─────────────────────────────────────────────────────────────────
 
 def compute_prf(tp: int, fp: int, fn: int) -> Dict[str, float]:
-    """Return precision / recall / F1 from raw counts."""
+    """Return {precision, recall, f1, tp, fp, fn} from raw counts."""
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = (
@@ -39,131 +44,121 @@ def compute_prf(tp: int, fp: int, fn: int) -> Dict[str, float]:
     }
 
 
-def _micro_counts(
-    all_pred: Iterable[Iterable],
-    all_gold: Iterable[Iterable],
-) -> Tuple[int, int, int]:
-    """Sum TP / FP / FN across all sentences using set intersection."""
+def _micro_prf(all_pred_sets, all_gold_sets) -> Dict[str, float]:
     total_tp = total_fp = total_fn = 0
-    for preds, golds in zip(all_pred, all_gold):
-        pred_set = set(preds)
-        gold_set = set(golds)
+    for pred_set, gold_set in zip(all_pred_sets, all_gold_sets):
         total_tp += len(pred_set & gold_set)
         total_fp += len(pred_set - gold_set)
         total_fn += len(gold_set - pred_set)
-    return total_tp, total_fp, total_fn
+    return compute_prf(total_tp, total_fp, total_fn)
+
+
+# ─── Derived label sets ────────────────────────────────────────────────────────
+# All four metrics are derived from the same List[List[Tuple[str,str,str]]].
+
+def _aspect_sets(triples_per_sent):
+    return [
+        {t[0].strip() for t in triples}
+        for triples in triples_per_sent
+    ]
+
+def _category_pair_sets(triples_per_sent):
+    return [
+        {(t[0].strip(), t[1].strip()) for t in triples}
+        for triples in triples_per_sent
+    ]
+
+def _sentiment_pair_sets(triples_per_sent):
+    return [
+        {(t[0].strip(), t[2].strip()) for t in triples}
+        for triples in triples_per_sent
+    ]
+
+def _triple_sets(triples_per_sent):
+    return [
+        {(t[0].strip(), t[1].strip(), t[2].strip()) for t in triples}
+        for triples in triples_per_sent
+    ]
 
 
 # ─── Per-label evaluators ─────────────────────────────────────────────────────
 
 def evaluate_aspect_term(
-    all_pred_aspects: List[List[str]],
-    all_gold_aspects: List[List[str]],
+    pred_triples: List[List[Tuple[str, str, str]]],
+    gold_triples: List[List[Tuple[str, str, str]]],
 ) -> Dict[str, float]:
-    """Micro P/R/F1 on aspect term extraction (exact string match, stripped).
+    """Micro P/R/F1 on aspect term extraction.
 
-    Args:
-        all_pred_aspects : one list of predicted aspect strings per sentence.
-        all_gold_aspects : one list of gold aspect strings per sentence.
+    Only the first field (aspect_term) of each triple is compared;
+    category and sentiment are ignored.
     """
-    def _normalize(aspects):
-        return (a.strip() for a in aspects if a and a.strip())
-
-    tp, fp, fn = _micro_counts(
-        (_normalize(p) for p in all_pred_aspects),
-        (_normalize(g) for g in all_gold_aspects),
-    )
-    return compute_prf(tp, fp, fn)
+    return _micro_prf(_aspect_sets(pred_triples), _aspect_sets(gold_triples))
 
 
-def evaluate_sentiment_pairs(
-    all_pred: List[List[Tuple[str, str]]],
-    all_gold: List[List[Tuple[str, str]]],
-) -> Dict[str, float]:
-    """Micro P/R/F1 on (aspect_term, sentiment) pairs.
-
-    A prediction is TP only when both the aspect term AND the sentiment match
-    a gold pair exactly.
-
-    Args:
-        all_pred : one list of (aspect, sentiment) tuples per sentence.
-        all_gold : one list of (aspect, sentiment) gold tuples per sentence.
-    """
-    def _norm_pairs(pairs):
-        return ((a.strip(), s.strip()) for a, s in pairs)
-
-    tp, fp, fn = _micro_counts(
-        (_norm_pairs(p) for p in all_pred),
-        (_norm_pairs(g) for g in all_gold),
-    )
-    return compute_prf(tp, fp, fn)
-
-
-def evaluate_category_pairs(
-    all_pred: List[List[Tuple[str, str]]],
-    all_gold: List[List[Tuple[str, str]]],
+def evaluate_category(
+    pred_triples: List[List[Tuple[str, str, str]]],
+    gold_triples: List[List[Tuple[str, str, str]]],
 ) -> Dict[str, float]:
     """Micro P/R/F1 on (aspect_term, category) pairs.
 
-    A prediction is TP only when both the aspect term AND the category match.
-    Category is predicted by the BERT APC model; this metric thus captures
-    *both* the ATE quality and the category classification quality together.
-
-    Args:
-        all_pred : one list of (aspect, category) tuples per sentence.
-        all_gold : one list of (aspect, category) gold tuples per sentence.
+    A prediction is TP only when both the aspect term AND the category
+    match a gold pair simultaneously.
     """
-    def _norm_pairs(pairs):
-        return ((a.strip(), c.strip()) for a, c in pairs)
-
-    tp, fp, fn = _micro_counts(
-        (_norm_pairs(p) for p in all_pred),
-        (_norm_pairs(g) for g in all_gold),
+    return _micro_prf(
+        _category_pair_sets(pred_triples),
+        _category_pair_sets(gold_triples),
     )
-    return compute_prf(tp, fp, fn)
 
 
-def evaluate_joint_triples(
-    all_pred: List[List[Tuple[str, str, str]]],
-    all_gold: List[List[Tuple[str, str, str]]],
+def evaluate_sentiment(
+    pred_triples: List[List[Tuple[str, str, str]]],
+    gold_triples: List[List[Tuple[str, str, str]]],
+) -> Dict[str, float]:
+    """Micro P/R/F1 on (aspect_term, sentiment) pairs.
+
+    A prediction is TP only when both the aspect term AND the sentiment
+    match a gold pair simultaneously.
+    """
+    return _micro_prf(
+        _sentiment_pair_sets(pred_triples),
+        _sentiment_pair_sets(gold_triples),
+    )
+
+
+def evaluate_joint(
+    pred_triples: List[List[Tuple[str, str, str]]],
+    gold_triples: List[List[Tuple[str, str, str]]],
 ) -> Dict[str, float]:
     """Micro P/R/F1 on (aspect_term, category, sentiment) triples.
 
     A prediction is TP **only** when all three labels match a gold triple
-    simultaneously.  Getting 2 out of 3 correct still counts as FP + FN.
-
-    Args:
-        all_pred : one list of (aspect, category, sentiment) tuples per sentence.
-        all_gold : one list of (aspect, category, sentiment) gold tuples per sentence.
+    simultaneously.  Partial matches (2 out of 3) contribute 0 TP.
     """
-    def _norm_triples(triples):
-        return ((a.strip(), c.strip(), s.strip()) for a, c, s in triples)
-
-    tp, fp, fn = _micro_counts(
-        (_norm_triples(p) for p in all_pred),
-        (_norm_triples(g) for g in all_gold),
-    )
-    return compute_prf(tp, fp, fn)
+    return _micro_prf(_triple_sets(pred_triples), _triple_sets(gold_triples))
 
 
 # ─── Composite evaluation ─────────────────────────────────────────────────────
 
 def evaluate_all(
-    pred_aspects:    List[List[str]],
-    gold_aspects:    List[List[str]],
-    pred_sent_pairs: List[List[Tuple[str, str]]],
-    gold_sent_pairs: List[List[Tuple[str, str]]],
-    pred_cat_pairs:  List[List[Tuple[str, str]]],
-    gold_cat_pairs:  List[List[Tuple[str, str]]],
-    pred_triples:    List[List[Tuple[str, str, str]]],
-    gold_triples:    List[List[Tuple[str, str, str]]],
+    pred_triples: List[List[Tuple[str, str, str]]],
+    gold_triples: List[List[Tuple[str, str, str]]],
 ) -> Dict[str, Dict[str, float]]:
-    """Run all four evaluations and return a structured report dict."""
+    """Run all four evaluations from a single set of (aspect, category, sentiment) triples.
+
+    Parameters
+    ----------
+    pred_triples : predicted triples, one list per sentence
+    gold_triples : gold triples, one list per sentence
+
+    Returns
+    -------
+    Dict with keys ``aspect_term``, ``category``, ``sentiment``, ``joint``.
+    """
     return {
-        "aspect_term": evaluate_aspect_term(pred_aspects, gold_aspects),
-        "sentiment":   evaluate_sentiment_pairs(pred_sent_pairs, gold_sent_pairs),
-        "category":    evaluate_category_pairs(pred_cat_pairs,  gold_cat_pairs),
-        "joint":       evaluate_joint_triples(pred_triples,     gold_triples),
+        "aspect_term": evaluate_aspect_term(pred_triples, gold_triples),
+        "category":    evaluate_category(   pred_triples, gold_triples),
+        "sentiment":   evaluate_sentiment(  pred_triples, gold_triples),
+        "joint":       evaluate_joint(      pred_triples, gold_triples),
     }
 
 
@@ -172,24 +167,24 @@ def evaluate_all(
 def format_metric(label: str, m: Dict[str, float]) -> str:
     """Single-line metric summary."""
     return (
-        f"{label:<14} "
+        f"{label:<16}"
         f"P={m['precision']:.4f}  R={m['recall']:.4f}  F1={m['f1']:.4f}"
         f"  (TP={int(m['tp'])} FP={int(m['fp'])} FN={int(m['fn'])})"
     )
 
 
 def format_report(results: Dict[str, Dict[str, float]]) -> str:
-    """Format all 4 metrics as a multi-line string."""
-    lines = ["─" * 72]
-    order = ["aspect_term", "sentiment", "category", "joint"]
+    """Format all 4 metrics as a multi-line report string."""
+    order  = ["aspect_term", "category", "sentiment", "joint"]
     labels = {
         "aspect_term": "Aspect Term",
-        "sentiment":   "Sentiment",
         "category":    "Category",
+        "sentiment":   "Sentiment",
         "joint":       "Joint (all 3)",
     }
+    lines = ["-" * 72]
     for key in order:
         if key in results:
             lines.append(format_metric(labels[key], results[key]))
-    lines.append("─" * 72)
+    lines.append("-" * 72)
     return "\n".join(lines)
