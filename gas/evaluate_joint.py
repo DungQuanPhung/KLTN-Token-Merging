@@ -169,7 +169,7 @@ def main() -> None:
 
     # Load evaluation data (main records only, no supplement)
     print(f"Loading {args.split} data from: {args.data_dir}")
-    main_records, _ = load_split_records(args.split, args.data_dir)
+    main_records = load_split_records(args.split, args.data_dir)
     print(f"  {len(main_records)} sentences")
 
     # Run evaluation

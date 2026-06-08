@@ -20,3 +20,7 @@ runs_joint/
 Thumbs.db
 
 frontend/dist/
+
+checkpoints_gas/
+*.pt
+*.bin

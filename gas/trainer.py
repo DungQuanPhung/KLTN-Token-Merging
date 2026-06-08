@@ -59,7 +59,7 @@ class GasTrainer:
         num_epochs: int = 20,
         warmup_ratio: float = 0.1,
         max_grad_norm: float = 1.0,
-        patience: int = 5,
+        patience: int = 4,
         output_dir: Optional[str | Path] = None,
         dev_records:  Optional[Sequence[Dict]] = None,
         test_records: Optional[Sequence[Dict]] = None,

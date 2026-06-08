@@ -97,6 +97,10 @@ TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running
 # although, though, whereas.  Set False to use full sentences (default).
 USE_CLAUSE_SPLIT = True
 
+# Set True to mix supplement TSV data into sentiment-head training (recommended).
+# Set False to train on main .apc data only.
+USE_SUPPLEMENT = False
+
 # Default loss and early stopping weights
 DEFAULT_TASK_WEIGHT_SENT = 1.0  # 1.317
 DEFAULT_TASK_WEIGHT_CAT  = 1.0
@@ -121,14 +125,17 @@ CONFIGS: List[Tuple[bool, bool, bool, str, str, str, bool]] = [
     # Other models (use default weights) — set use_cdm=True for LCF configs to use CDM
     # (True,  True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
     (True,  True,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
+    (True,  False,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
     # (True,  True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
     # (False, False, True,  True,  "bipartite", "Bip (resize)",          "bip_resize"),
     # (False, False, True,  False, "bipartite", "Bip (compact)",         "bip_compact"),
-    # (True,  True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
+    (True,  True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
+    (True,  False,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
     # (True,  True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
     # (False, False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
     # (False, False, True,  False, "sequential_local", "Seq (compact)",         "seq_compact"),
-    # (True,  True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
+    (True,  True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
+    (True,  False,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
     # (True,  True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
     # (False, False, True,  True,  "attention_weighted", "Attn (resize)",       "attn_resize"),
     # (False, False, True,  False, "attention_weighted", "Attn (compact)",      "attn_compact"),
@@ -230,12 +237,19 @@ def evaluate(
             cat_true  += y_c[main_mask].cpu().tolist()
 
     n = max(len(loader), 1)
+    # Joint: both sentiment AND category must be correct simultaneously.
+    # dev/test loaders contain no supplement rows, so len(sent_pred) == len(cat_pred).
+    min_len    = min(len(sent_pred), len(cat_pred))
+    joint_true = [f"{s}_{c}" for s, c in zip(sent_true[:min_len], cat_true[:min_len])]
+    joint_pred = [f"{s}_{c}" for s, c in zip(sent_pred[:min_len], cat_pred[:min_len])]
     return {
         "loss":            round(total_loss / n, 4),
         "sentiment_acc":   round(accuracy_score(sent_true, sent_pred) * 100, 2),
         "sentiment_f1":    round(f1_score(sent_true, sent_pred, average="macro",  zero_division=0) * 100, 2),
         "aspect_cat_acc":  round(accuracy_score(cat_true, cat_pred) * 100, 2),
         "aspect_cat_f1":   round(f1_score(cat_true,  cat_pred,  average="macro",  zero_division=0) * 100, 2),
+        "joint_acc":       round(accuracy_score(joint_true, joint_pred) * 100, 2),
+        "joint_f1":        round(f1_score(joint_true, joint_pred, average="macro", zero_division=0) * 100, 2),
         "sent_pred": sent_pred, "sent_true": sent_true,
         "cat_pred":  cat_pred,  "cat_true":  cat_true,
     }
@@ -347,15 +361,15 @@ def train_joint(
         avg_loss = total_loss / max(len(train_loader), 1)
         dev_m    = evaluate(model, dev_loader, sent_criterion, cat_criterion)
 
-        # Combined F1 for early stopping based on ES weights
-        dev_combined_f1 = es_weight_sent * dev_m["sentiment_f1"] + es_weight_cat * dev_m["aspect_cat_f1"]
+        # Early stopping on joint F1: both sentiment AND category correct simultaneously
+        dev_combined_f1 = dev_m["joint_f1"]
 
         print(
             f"    [{short_id}] epoch {epoch:2d}/{NUM_EPOCHS}"
             f"  train_loss={avg_loss:.4f}"
             f"  dev_sent_f1={dev_m['sentiment_f1']:.1f}%"
             f"  dev_cat_f1={dev_m['aspect_cat_f1']:.1f}%"
-            f"  dev_combined_f1={dev_combined_f1:.1f}%"
+            f"  dev_joint_f1={dev_combined_f1:.1f}%"
         )
 
         if dev_combined_f1 > best_dev_f1 + 0.01:
@@ -440,6 +454,9 @@ def train_joint(
         # Category per-class
         **{f"cat_f1_{cat_labels_order[i]}": round(float(cat_f1_per[i]), 2)
            for i in range(len(cat_labels_order))},
+        # Joint: both sentiment AND category correct simultaneously
+        "joint_f1":        test_m["joint_f1"],
+        "joint_acc":       test_m["joint_acc"],
     }
     return result
 
@@ -451,7 +468,7 @@ def print_summary_table(
     labels:  List[str],
     cat_labels_order: List[str],
 ) -> None:
-    W = 112
+    W = 124
     print(f"\n{'═' * W}")
     print("EXPERIMENT SUMMARY — Joint training (Sent: main+supp | Cat: main only)")
     print(f"{'═' * W}")
@@ -465,7 +482,7 @@ def print_summary_table(
     print(f"\n{'─' * W}")
     print(f"  {'Configuration':<26} {'LCF':>4} {'Strategy':<16} {'Resize':>6}"
           f" {'Time(s)':>8} {'BestEp':>7}"
-          f" {'Sent-F1':>9} {'Cat-F1':>8} {'SentAcc':>8} {'CatAcc':>8}")
+          f" {'Sent-F1':>9} {'Cat-F1':>8} {'Joint-F1':>9} {'SentAcc':>8} {'CatAcc':>8}")
     print(f"{'─' * W}")
 
     baseline_time = next(
@@ -484,6 +501,7 @@ def print_summary_table(
             f"  {label:<26} {lcf_tag:>4} {strategy_tag:<16} {resize_tag:>6}"
             f" {r['train_time_sec']:>8.1f} {r['best_epoch']:>7d}"
             f" {r['sentiment_f1']:>8.2f}% {r['aspect_cat_f1']:>7.2f}%"
+            f" {r.get('joint_f1', 0):>8.2f}%"
             f" {r['sentiment_acc']:>8.2f}% {r['aspect_cat_acc']:>8.2f}%{speedup}"
         )
     print(f"  {'Configuration':<26} {'LCF':>4}", end="")
@@ -532,12 +550,16 @@ def main() -> None:
     print(f"Seed    : {SEED}")
     print(f"Runs dir: {RUNS_DIR}\n")
 
-    avail_supplements = [p for p in SUPPLEMENT_FILES if Path(p).is_file()]
-    missing           = [p for p in SUPPLEMENT_FILES if not Path(p).is_file()]
-    if missing:
-        print(f"[warn] supplement files not found (skipped): {missing}")
-    if avail_supplements:
-        print(f"Supplement files: {[Path(p).name for p in avail_supplements]}")
+    if USE_SUPPLEMENT:
+        avail_supplements = [p for p in SUPPLEMENT_FILES if Path(p).is_file()]
+        missing = [p for p in SUPPLEMENT_FILES if not Path(p).is_file()]
+        if missing:
+            print(f"[warn] supplement files not found (skipped): {missing}")
+        if avail_supplements:
+            print(f"Supplement files: {[Path(p).name for p in avail_supplements]}")
+    else:
+        avail_supplements = []
+        print("Supplement: disabled (USE_SUPPLEMENT=False)")
 
     tokenizer = AutoTokenizer.from_pretrained(PRETRAINED_BERT)
     sentiment_map, aspect_cat_map = build_label_maps_from_apc(

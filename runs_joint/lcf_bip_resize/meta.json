@@ -13,13 +13,14 @@
     "SERVICE"
   ],
   "num_aspect_cat": 6,
-  "best_dev_f1": 76.22,
-  "best_epoch": 6,
+  "best_dev_f1": 56.53,
+  "best_epoch": 5,
   "config": {
     "use_lcf": true,
     "use_cdm": true,
     "use_tome": true,
     "tome_resize": true,
-    "merge_strategy": "bipartite"
+    "merge_strategy": "bipartite",
+    "clause_split": true
   }
 }
