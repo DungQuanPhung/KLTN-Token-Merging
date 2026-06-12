@@ -352,10 +352,10 @@ def train_joint(
     ckpt_dir = RUNS_DIR / short_id
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    best_dev_f1 = -1.0
-    best_epoch  = 0
-    no_improve  = 0
-    best_state  = None
+    best_dev_loss = float("inf")
+    best_epoch    = 0
+    no_improve    = 0
+    best_state    = None
 
     t0 = time.perf_counter()
 
@@ -394,22 +394,23 @@ def train_joint(
         avg_loss = total_loss / max(len(train_loader), 1)
         dev_m    = evaluate(model, dev_loader, sent_criterion, cat_criterion)
 
-        # Early stopping on joint F1: both sentiment AND category correct simultaneously
-        dev_combined_f1 = dev_m["joint_f1"]
+        # Early stopping on dev cross-entropy loss (lower is better)
+        dev_loss = dev_m["loss"]
 
         print(
             f"    [{short_id}] epoch {epoch:2d}/{NUM_EPOCHS}"
             f"  train_loss={avg_loss:.4f}"
+            f"  dev_loss={dev_loss:.4f}"
             f"  dev_sent_f1={dev_m['sentiment_f1']:.1f}%"
             f"  dev_cat_f1={dev_m['aspect_cat_f1']:.1f}%"
-            f"  dev_joint_f1={dev_combined_f1:.1f}%"
+            f"  dev_joint_f1={dev_m['joint_f1']:.1f}%"
         )
 
-        if dev_combined_f1 > best_dev_f1 + 0.01:
-            best_dev_f1 = dev_combined_f1
-            best_epoch  = epoch
-            no_improve  = 0
-            best_state  = copy.deepcopy(model.state_dict())
+        if dev_loss < best_dev_loss - 1e-4:
+            best_dev_loss = dev_loss
+            best_epoch    = epoch
+            no_improve    = 0
+            best_state    = copy.deepcopy(model.state_dict())
             torch.save(best_state, ckpt_dir / "best_model.pt")
             # Save meta so pipeline_inference.py can reconstruct label maps
             import json as _json
@@ -418,7 +419,7 @@ def train_joint(
                 "sentiment_labels":    SENTIMENT_LABELS,
                 "category_labels":     [cat_id2label_local[i] for i in sorted(cat_id2label_local)],
                 "num_aspect_cat":      num_aspect_cat,
-                "best_dev_f1":         round(best_dev_f1, 4),
+                "best_dev_loss":       round(best_dev_loss, 6),
                 "best_epoch":          best_epoch,
                 "config": {
                     "use_lcf": use_lcf, "use_cdm": use_cdm,
@@ -476,7 +477,7 @@ def train_joint(
     result = {
         "train_time_sec":  train_time,
         "best_epoch":      best_epoch,
-        "best_dev_f1":     round(best_dev_f1, 2),
+        "best_dev_loss":   round(best_dev_loss, 6),
         # Sentiment overall
         "sentiment_f1":    test_m["sentiment_f1"],
         "sentiment_acc":   test_m["sentiment_acc"],
@@ -691,7 +692,7 @@ def main() -> None:
         results.append(r)
         labels.append(label)
 
-        print(f"\n  → Train time   : {r['train_time_sec']:.1f}s  | best epoch: {r['best_epoch']}")
+        print(f"\n  → Train time   : {r['train_time_sec']:.1f}s  | best epoch: {r['best_epoch']}  | best dev loss: {r.get('best_dev_loss', 0):.4f}")
         print(f"  → Sentiment F1 : {r['sentiment_f1']:.2f}%"
               f"  (pos={r.get('sent_f1_positive',0):.1f}%"
               f"  neg={r.get('sent_f1_negative',0):.1f}%"
@@ -713,7 +714,7 @@ def main() -> None:
         ["label", "use_lcf", "use_cdm", "use_tome", "tome_resize", "merge_strategy",
          "use_pre_tome",
          "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
-         "train_time_sec", "best_epoch",
+         "train_time_sec", "best_epoch", "best_dev_loss",
          "sentiment_f1", "sentiment_acc", "aspect_cat_acc", "aspect_cat_f1"]
         + [f"sent_f1_{l}" for l in SENTIMENT_LABELS]
         + [f"cat_f1_{l}" for l in cat_labels_order]
