@@ -269,9 +269,7 @@ class FastLcfBertMultiTask(nn.Module):
             )
             if new_mask is not None:
                 attention_mask = new_mask.long()
-            ext_mask = self.bert.get_extended_attention_mask(
-                attention_mask, attention_mask.shape
-            )
+            ext_mask = (1.0 - attention_mask[:, None, None, :].float()) * -10000.0
             hidden = self.bert.encoder(
                 embeds, attention_mask=ext_mask
             ).last_hidden_state
