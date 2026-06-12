@@ -15,18 +15,28 @@ LCF semantics (LCF-ATEPC, Zeng et al. 2019):
     the two-stream design from the original paper.
 
 Architecture:
-    Encoder (T5/BERT)  →  [ToMe]  →  split:
+    [Pre-BERT ToMe]  →  Encoder (T5/BERT)  →  [Post-BERT ToMe]  →  split:
         local  = hidden * CDW(lcf_vec)   →  SA
         global = hidden
     →  cat(local, global)  →  Linear(2H→H)  →  Dropout
     →  SA  →  BertPooler  →  [sentiment head | aspect_cat head]
 
+    Pre-BERT ToMe: merge token embeddings BEFORE BERT transformer layers.
+        Applies ToMeSequenceMerger on the raw word/position/type embeddings
+        (output of bert.embeddings / bert.shared), then feeds the merged
+        sequence into BERT's encoder stack with an updated attention mask.
+        Supported backbones: BertModel-like (has .embeddings + .encoder)
+        and T5EncoderModel-like (has .shared + .encoder).
+
 Constructor flags:
-    use_lcf       (bool) – enable Local Context Focus (CDW-weighted local stream).
-    use_tome      (bool) – apply Token Merging (ToMe) after BERT backbone.
-    tome_resize   (bool) – True: interpolate merged tokens back to original L.
-                           False: keep compact length L' ≤ L (real speedup).
-    srd_threshold (int)  – CDW full-weight radius α (paper default = 5).
+    use_lcf          (bool) – enable Local Context Focus (CDW-weighted local stream).
+    use_cdm          (bool) – if True, use CDM (binary mask); if False, use CDW (gradient).
+    use_tome         (bool) – apply Token Merging (ToMe) after BERT backbone.
+    tome_resize      (bool) – True: interpolate merged tokens back to original L.
+                              False: keep compact length L' ≤ L (real speedup).
+    use_pre_tome     (bool) – apply Token Merging before BERT (at embedding level).
+    pre_tome_resize  (bool) – same resize semantics as tome_resize but for pre-BERT merge.
+    srd_threshold    (int)  – CDW full-weight radius α (paper default = 5).
 """
 
 from __future__ import annotations
@@ -154,15 +164,19 @@ class FastLcfBertMultiTask(nn.Module):
     """Multi-task BERT model: predicts sentiment AND aspect_category jointly.
 
     Args:
-        bert           : HuggingFace encoder model (T5EncoderModel / BertModel / AutoModel).
-        num_sentiment  : number of sentiment classes (default 3).
-        num_aspect_cat : number of aspect-category classes.
-        use_lcf        : enable Local Context Focus masking.
-        use_cdm        : if True, use CDM (binary mask); if False, use CDW (gradient).
-        use_tome       : enable Token Merging after BERT backbone.
-        dropout        : dropout probability.
-        num_heads      : heads for self-attention layers.
-        tome_merge_steps: bipartite merge rounds per sample.
+        bert                   : HuggingFace encoder model (T5EncoderModel / BertModel / AutoModel).
+        num_sentiment          : number of sentiment classes (default 3).
+        num_aspect_cat         : number of aspect-category classes.
+        use_lcf                : enable Local Context Focus masking.
+        use_cdm                : if True, use CDM (binary mask); if False, use CDW (gradient).
+        use_tome               : enable Token Merging after BERT backbone.
+        use_pre_tome           : enable Token Merging before BERT (at embedding level).
+        pre_tome_merge_steps   : merge rounds for pre-BERT ToMe (default 1, conservative).
+        pre_tome_merge_strategy: merge strategy for pre-BERT ToMe.
+        pre_tome_resize        : resize semantics for pre-BERT ToMe.
+        dropout                : dropout probability.
+        num_heads              : heads for self-attention layers.
+        tome_merge_steps       : bipartite merge rounds per sample (post-BERT).
     """
 
     def __init__(
@@ -179,6 +193,10 @@ class FastLcfBertMultiTask(nn.Module):
         num_heads: int = 8,
         tome_merge_steps: int = 2,
         srd_threshold: int = 5,
+        use_pre_tome: bool = False,
+        pre_tome_merge_steps: int = 1,
+        pre_tome_merge_strategy: str = "bipartite",
+        pre_tome_resize: bool = True,
     ) -> None:
         super().__init__()
         self.bert = bert
@@ -187,6 +205,7 @@ class FastLcfBertMultiTask(nn.Module):
         self._use_tome = use_tome
         self._tome_resize = tome_resize
         self._srd_threshold = srd_threshold
+        self._use_pre_tome = use_pre_tome
 
         H = getattr(bert.config, "hidden_size", None) or getattr(bert.config, "d_model", 768)
 
@@ -209,18 +228,91 @@ class FastLcfBertMultiTask(nn.Module):
                 merge_strategy=tome_merge_strategy,
             )
 
+        if use_pre_tome:
+            # Detect how to split the backbone into embedding + encoder
+            self._pre_tome_mode = (
+                "bert" if hasattr(bert, "embeddings") and hasattr(bert, "encoder")
+                else "t5" if hasattr(bert, "shared") and hasattr(bert, "encoder")
+                else "none"
+            )
+            self.pre_tome = ToMeSequenceMerger(
+                num_merge_steps=pre_tome_merge_steps,
+                protect_cls=True,
+                protect_sep=True,
+                protect_aspect=True,
+                resize=pre_tome_resize,
+                merge_strategy=pre_tome_merge_strategy,
+            )
+        else:
+            self._pre_tome_mode = "none"
+
+    def _pre_bert_merge(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        lcf_vec: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Extract backbone embeddings → apply pre-BERT ToMe → run encoder.
+
+        Returns (hidden, lcf_vec, attention_mask) with updated shapes when
+        resize=False (compact mode shortens the sequence before BERT layers).
+
+        Three backbone modes:
+            "bert"  – BertModel-like: bert.embeddings + bert.encoder
+            "t5"    – T5EncoderModel-like: bert.shared + bert.encoder
+            "none"  – unsupported backbone; falls back to standard forward
+        """
+        if self._pre_tome_mode == "bert":
+            embeds = self.bert.embeddings(input_ids=input_ids)          # (B, L, H)
+            _, embeds, lcf_vec, new_mask = self.pre_tome.forward_with_trace(
+                embeds, lcf_vec, attention_mask.float()
+            )
+            if new_mask is not None:
+                attention_mask = new_mask.long()
+            ext_mask = self.bert.get_extended_attention_mask(
+                attention_mask, attention_mask.shape
+            )
+            hidden = self.bert.encoder(
+                embeds, attention_mask=ext_mask
+            ).last_hidden_state
+
+        elif self._pre_tome_mode == "t5":
+            embeds = self.bert.shared(input_ids)                        # (B, L, H)
+            _, embeds, lcf_vec, new_mask = self.pre_tome.forward_with_trace(
+                embeds, lcf_vec, attention_mask.float()
+            )
+            if new_mask is not None:
+                attention_mask = new_mask.long()
+            hidden = self.bert.encoder(
+                inputs_embeds=embeds, attention_mask=attention_mask
+            ).last_hidden_state
+
+        else:
+            # Backbone does not expose a split path — skip pre-merge silently
+            hidden = self.bert(
+                input_ids=input_ids, attention_mask=attention_mask
+            ).last_hidden_state
+
+        return hidden, lcf_vec, attention_mask
+
     def forward(
         self,
         input_ids: torch.Tensor,       # (B, L)
         attention_mask: torch.Tensor,  # (B, L)
         lcf_vec: torch.Tensor,         # (B, L) float – binary aspect indicator
     ) -> dict:
-        bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        hidden = bert_out.last_hidden_state          # (B, L, H) — global stream
+        # ── Encode: standard BERT or pre-BERT-merge split path ────────────
+        if self._use_pre_tome:
+            hidden, lcf_vec, attention_mask = self._pre_bert_merge(
+                input_ids, attention_mask, lcf_vec
+            )
+        else:
+            bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+            hidden = bert_out.last_hidden_state                         # (B, L, H)
 
-        # ── ToMe runs on the UNMASKED global hidden so the global branch is
-        # not corrupted by LCF.  The aspect indicator is propagated through
-        # merges (max over merged positions) and reused below to build CDW/CDM.
+        # ── Post-BERT ToMe: runs on UNMASKED global hidden so the global
+        # branch is not corrupted by LCF.  The aspect indicator propagates
+        # through merges (max over merged positions).
         if self._use_tome:
             _, hidden, lcf_vec, new_attn_mask = self.tome.forward_with_trace(
                 hidden, lcf_vec, attention_mask.float()

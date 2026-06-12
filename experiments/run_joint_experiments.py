@@ -81,7 +81,7 @@ SUPPLEMENT_FILES: List[str] = [
 # Change MODEL_TYPE to switch between encoders.  Add new entries to
 # _MODEL_CONFIGS to register additional pretrained checkpoints.
 
-MODEL_TYPE = "t5"   # "bert" | "t5"
+MODEL_TYPE = "bert"   # "bert" | "t5"
 
 _MODEL_CONFIGS = {
     "bert": "bert-base-uncased",
@@ -103,7 +103,8 @@ MAX_SEQ_LEN      = 128
 DROPOUT          = 0.1
 NUM_HEADS        = 8
 SRD_THRESHOLD    = 5  # LCF-ATEPC CDW full-weight radius α (paper default)
-TOME_MERGE_STEPS = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
+TOME_MERGE_STEPS     = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
+PRE_TOME_MERGE_STEPS = 1   # Conservative: 1 merge step before BERT encoder
 
 # ── Preprocessing config ──────────────────────────────────────────────────────
 # When True, each sentence is replaced by the clause containing its aspect term
@@ -130,29 +131,35 @@ WEIGHT_OVERRIDES = {
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, display_name, short_id)
-CONFIGS: List[Tuple[bool, bool, bool, str, str, str, bool]] = [
-    # Baseline with different loss/ES weights (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, label, short_id)
-    # (False, False, False, True, "bipartite", "Baseline (Sent-focus)", "baseline_sent_focus"),
-    # (False, False, False, True, "bipartite", "Baseline (Cat-focus)",  "baseline_cat_focus"),
-    # (False, False, False, True, "bipartite", "Baseline (Balanced)",   "baseline_balanced"),
-    # Other models (use default weights) — set use_cdm=True for LCF configs to use CDM
-    # (True,  True,  False, True,  "bipartite", "LCF only",        "lcf_only"),
-    (True,  True,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
-    (True,  False,  True,  True,  "bipartite", "LCF+Bip (resize)",      "lcf_bip_resize"),
-    # (True,  True,  True,  False, "bipartite", "LCF+Bip (compact)",     "lcf_bip_compact"),
-    # (False, False, True,  True,  "bipartite", "Bip (resize)",          "bip_resize"),
-    # (False, False, True,  False, "bipartite", "Bip (compact)",         "bip_compact"),
-    (True,  True,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
-    (True,  False,  True,  True,  "sequential_local", "LCF+Seq (resize)",      "lcf_seq_resize"),
-    # (True,  True,  True,  False, "sequential_local", "LCF+Seq (compact)",     "lcf_seq_compact"),
-    # (False, False, True,  True,  "sequential_local", "Seq (resize)",          "seq_resize"),
-    # (False, False, True,  False, "sequential_local", "Seq (compact)",         "seq_compact"),
-    (True,  True,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
-    (True,  False,  True,  True,  "attention_weighted", "LCF+Attn (resize)",   "lcf_attn_resize"),
-    # (True,  True,  True,  False, "attention_weighted", "LCF+Attn (compact)",  "lcf_attn_compact"),
-    # (False, False, True,  True,  "attention_weighted", "Attn (resize)",       "attn_resize"),
-    # (False, False, True,  False, "attention_weighted", "Attn (compact)",      "attn_compact"),
+# (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, use_pre_tome, display_name, short_id)
+CONFIGS: List[Tuple] = [
+    # Baseline with different loss/ES weights
+    # (False, False, False, True, "bipartite",          False, "Baseline (Sent-focus)", "baseline_sent_focus"),
+    # (False, False, False, True, "bipartite",          False, "Baseline (Cat-focus)",  "baseline_cat_focus"),
+    # (False, False, False, True, "bipartite",          False, "Baseline (Balanced)",   "baseline_balanced"),
+    # ── Post-BERT ToMe (original configs) ─────────────────────────────────────
+    # set use_cdm=True/False for LCF configs to compare CDW vs CDM
+    # (True,  True,  False, True,  "bipartite",          False, "LCF only",              "lcf_only"),
+    (True,  True,  True,  True,  "bipartite",          True, "LCF+Bip (resize)",      "lcf_bip_resize"),
+    (True,  False, True,  True,  "bipartite",          True, "LCF+Bip (resize)",      "lcf_bip_resize"),
+    # (True,  True,  True,  False, "bipartite",          False, "LCF+Bip (compact)",     "lcf_bip_compact"),
+    # (False, False, True,  True,  "bipartite",          False, "Bip (resize)",          "bip_resize"),
+    (True,  True,  True,  True,  "sequential_local",   True, "LCF+Seq (resize)",      "lcf_seq_resize"),
+    (True,  False, True,  True,  "sequential_local",   True, "LCF+Seq (resize)",      "lcf_seq_resize"),
+    # (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq (compact)",     "lcf_seq_compact"),
+    # (False, False, True,  True,  "sequential_local",   False, "Seq (resize)",          "seq_resize"),
+    (True,  True,  True,  True,  "attention_weighted", True, "LCF+Attn (resize)",     "lcf_attn_resize"),
+    (True,  False, True,  True,  "attention_weighted", True, "LCF+Attn (resize)",     "lcf_attn_resize"),
+    # (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn (compact)",   "lcf_attn_compact"),
+    # (False, False, True,  True,  "attention_weighted", False, "Attn (resize)",         "attn_resize"),
+    # ── Pre-BERT ToMe (merge at embedding level BEFORE BERT encoder) ──────────
+    # use_tome=False below means NO post-BERT merge; combine True+True for both
+    # (True,  True,  False, True,  "bipartite",          True,  "LCF+PreBip (resize)",   "lcf_pre_bip"),
+    # (True,  True,  False, True,  "sequential_local",   True,  "LCF+PreSeq (resize)",   "lcf_pre_seq"),
+    # (True,  True,  False, True,  "attention_weighted", True,  "LCF+PreAttn (resize)",  "lcf_pre_attn"),
+    # ── Pre-BERT + Post-BERT combined ─────────────────────────────────────────
+    # (True,  True,  True,  True,  "bipartite",          True,  "LCF+Pre+PostBip",       "lcf_pre_post_bip"),
+    # (True,  True,  True,  True,  "sequential_local",   True,  "LCF+Pre+PostSeq",       "lcf_pre_post_seq"),
 ]
 
 
@@ -279,22 +286,23 @@ def evaluate(
 # ─── Joint training ───────────────────────────────────────────────────────────
 
 def train_joint(
-    use_lcf:        bool,
-    use_cdm:        bool,
-    use_tome:       bool,
-    tome_resize:    bool,
-    merge_strategy: str,
+    use_lcf:          bool,
+    use_cdm:          bool,
+    use_tome:         bool,
+    tome_resize:      bool,
+    merge_strategy:   str,
+    use_pre_tome:     bool,
     task_weight_sent: float,
-    task_weight_cat: float,
-    es_weight_sent: float,
-    es_weight_cat: float,
-    short_id:       str,
-    train_ds:       ApcFileDataset,   # main + supplement
-    dev_ds:         ApcFileDataset,
-    test_ds:        ApcFileDataset,
-    num_sentiment:  int,
-    num_aspect_cat: int,
-    aspect_cat_map: Dict[str, int],
+    task_weight_cat:  float,
+    es_weight_sent:   float,
+    es_weight_cat:    float,
+    short_id:         str,
+    train_ds:         ApcFileDataset,   # main + supplement
+    dev_ds:           ApcFileDataset,
+    test_ds:          ApcFileDataset,
+    num_sentiment:    int,
+    num_aspect_cat:   int,
+    aspect_cat_map:   Dict[str, int],
 ) -> Dict:
     """Train both heads jointly.
 
@@ -325,6 +333,10 @@ def train_joint(
         num_heads=NUM_HEADS,
         tome_merge_steps=TOME_MERGE_STEPS,
         srd_threshold=SRD_THRESHOLD,
+        use_pre_tome=use_pre_tome,
+        pre_tome_merge_steps=PRE_TOME_MERGE_STEPS,
+        pre_tome_merge_strategy=merge_strategy,
+        pre_tome_resize=tome_resize,
     ).to(DEVICE)
 
     optimiser = torch.optim.AdamW(model.parameters(), lr=LR)
@@ -412,6 +424,8 @@ def train_joint(
                     "use_lcf": use_lcf, "use_cdm": use_cdm,
                     "use_tome": use_tome, "tome_resize": tome_resize,
                     "merge_strategy": merge_strategy,
+                    "use_pre_tome": use_pre_tome,
+                    "pre_tome_merge_steps": PRE_TOME_MERGE_STEPS,
                     "clause_split": USE_CLAUSE_SPLIT,
                 },
             }
@@ -501,25 +515,27 @@ def print_summary_table(
 
     # ── Overall table ─────────────────────────────────────────────────────────
     print(f"\n{'─' * W}")
-    print(f"  {'Configuration':<26} {'LCF':>4} {'Strategy':<16} {'Resize':>6}"
+    print(f"  {'Configuration':<26} {'LCF':>4} {'PreToMe':>7} {'Strategy':<16} {'Resize':>6}"
           f" {'Time(s)':>8} {'BestEp':>7}"
           f" {'Sent-F1':>9} {'Cat-F1':>8} {'Joint-F1':>9} {'SentAcc':>8} {'CatAcc':>8}")
     print(f"{'─' * W}")
 
     baseline_time = next(
-        (r["train_time_sec"] for r in results if not r["use_tome"]),
+        (r["train_time_sec"] for r in results if not r["use_tome"] and not r.get("use_pre_tome")),
         None,
     )
     for r, label in zip(results, labels):
         lcf_tag      = "Y" if r["use_lcf"] else "N"
-        strategy_tag = r["merge_strategy"] if r["use_tome"] else "—"
-        resize_tag   = "—" if not r["use_tome"] else ("yes" if r["tome_resize"] else "NO")
+        pre_tome_tag = "Y" if r.get("use_pre_tome") else "N"
+        any_tome     = r["use_tome"] or r.get("use_pre_tome")
+        strategy_tag = r["merge_strategy"] if any_tome else "—"
+        resize_tag   = "—" if not any_tome else ("yes" if r["tome_resize"] else "NO")
         speedup = ""
         if r["use_tome"] and not r["tome_resize"] and baseline_time:
             ratio = baseline_time / max(r["train_time_sec"], 1e-6)
             speedup = f"  x{ratio:.2f}"
         print(
-            f"  {label:<26} {lcf_tag:>4} {strategy_tag:<16} {resize_tag:>6}"
+            f"  {label:<26} {lcf_tag:>4} {pre_tome_tag:>7} {strategy_tag:<16} {resize_tag:>6}"
             f" {r['train_time_sec']:>8.1f} {r['best_epoch']:>7d}"
             f" {r['sentiment_f1']:>8.2f}% {r['aspect_cat_f1']:>7.2f}%"
             f" {r.get('joint_f1', 0):>8.2f}%"
@@ -625,16 +641,17 @@ def main() -> None:
     print("Joint training: Sentiment (main+supp) + Category (main only)")
     print(f"{'═' * 70}")
 
-    for use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, label, short_id in CONFIGS:
+    for use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, use_pre_tome, label, short_id in CONFIGS:
         # Get weights for this config
         task_weight_sent, task_weight_cat, es_weight_sent, es_weight_cat = get_weights_for_config(short_id)
-        
-        strategy_tag = merge_strategy if use_tome else "—"
-        resize_tag   = ("resize" if tome_resize else "compact") if use_tome else "—"
-        cdm_tag      = " (CDM)" if use_cdm else ""
+
+        strategy_tag  = merge_strategy if (use_tome or use_pre_tome) else "—"
+        resize_tag    = ("resize" if tome_resize else "compact") if (use_tome or use_pre_tome) else "—"
+        cdm_tag       = " (CDM)" if use_cdm else ""
+        pre_tome_tag  = " [PreToMe]" if use_pre_tome else ""
         print(f"\n{'─' * 70}")
-        print(f"Config : {label}{cdm_tag}  "
-              f"(lcf={use_lcf}, cdm={use_cdm}, tome={use_tome}, "
+        print(f"Config : {label}{cdm_tag}{pre_tome_tag}  "
+              f"(lcf={use_lcf}, cdm={use_cdm}, tome={use_tome}, pre_tome={use_pre_tome}, "
               f"strategy={strategy_tag}, resize={resize_tag})")
         print(f"  Task weights: sent={task_weight_sent}, cat={task_weight_cat} | "
               f"ES weights: sent={es_weight_sent}, cat={es_weight_cat}")
@@ -646,6 +663,7 @@ def main() -> None:
             use_tome=use_tome,
             tome_resize=tome_resize,
             merge_strategy=merge_strategy,
+            use_pre_tome=use_pre_tome,
             task_weight_sent=task_weight_sent,
             task_weight_cat=task_weight_cat,
             es_weight_sent=es_weight_sent,
@@ -658,16 +676,17 @@ def main() -> None:
             num_aspect_cat=len(aspect_cat_map),
             aspect_cat_map=aspect_cat_map,
         )
-        r["label"]         = label
-        r["use_lcf"]       = use_lcf
-        r["use_cdm"]       = use_cdm
-        r["use_tome"]      = use_tome
-        r["tome_resize"]   = tome_resize
-        r["merge_strategy"] = merge_strategy
+        r["label"]            = label
+        r["use_lcf"]          = use_lcf
+        r["use_cdm"]          = use_cdm
+        r["use_tome"]         = use_tome
+        r["tome_resize"]      = tome_resize
+        r["merge_strategy"]   = merge_strategy
+        r["use_pre_tome"]     = use_pre_tome
         r["task_weight_sent"] = task_weight_sent
-        r["task_weight_cat"] = task_weight_cat
-        r["es_weight_sent"] = es_weight_sent
-        r["es_weight_cat"] = es_weight_cat
+        r["task_weight_cat"]  = task_weight_cat
+        r["es_weight_sent"]   = es_weight_sent
+        r["es_weight_cat"]    = es_weight_cat
 
         results.append(r)
         labels.append(label)
@@ -692,6 +711,7 @@ def main() -> None:
     csv_path = RUNS_DIR / "experiment_results_joint.csv"
     fieldnames = (
         ["label", "use_lcf", "use_cdm", "use_tome", "tome_resize", "merge_strategy",
+         "use_pre_tome",
          "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
          "train_time_sec", "best_epoch",
          "sentiment_f1", "sentiment_acc", "aspect_cat_acc", "aspect_cat_f1"]

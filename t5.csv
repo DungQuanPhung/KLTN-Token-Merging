@@ -1,0 +1,7 @@
+label,use_lcf,use_cdm,use_tome,tome_resize,merge_strategy,task_weight_sent,task_weight_cat,es_weight_sent,es_weight_cat,train_time_sec,best_epoch,sentiment_f1,sentiment_acc,aspect_cat_acc,aspect_cat_f1,sent_f1_positive,sent_f1_negative,sent_f1_neutral,cat_f1_AMENITY,cat_f1_BRANDING,cat_f1_EXPERIENCE,cat_f1_FACILITY,cat_f1_LOYALTY,cat_f1_SERVICE
+LCF+Bip (resize),True,True,True,True,bipartite,1.0,1.0,0.5,0.5,611.71,12,69.62,93.27,87.18,83.7,96.61,69.39,42.86,87.12,72.73,76.19,87.5,85.71,92.94
+LCF+Bip (resize),True,False,True,True,bipartite,1.0,1.0,0.5,0.5,643.13,11,71.88,93.91,86.22,80.44,96.79,76.0,42.86,85.14,66.67,72.73,88.0,76.92,93.18
+LCF+Seq (resize),True,True,True,True,sequential_local,1.0,1.0,0.5,0.5,555.15,7,69.52,93.91,84.94,78.91,97.15,73.91,37.5,82.52,64.29,68.97,85.85,76.92,94.92
+LCF+Seq (resize),True,False,True,True,sequential_local,1.0,1.0,0.5,0.5,708.1,10,73.23,94.55,89.1,82.83,97.35,72.34,50.0,88.16,66.67,79.37,90.36,76.92,95.51
+LCF+Attn (resize),True,True,True,True,attention_weighted,1.0,1.0,0.5,0.5,537.54,7,79.17,95.51,88.78,84.92,97.7,78.26,61.54,88.0,80.0,73.68,90.1,83.33,94.38
+LCF+Attn (resize),True,False,True,True,attention_weighted,1.0,1.0,0.5,0.5,762.33,12,72.67,94.23,89.42,84.71,97.16,70.83,50.0,89.74,72.73,76.92,91.19,83.33,94.32
