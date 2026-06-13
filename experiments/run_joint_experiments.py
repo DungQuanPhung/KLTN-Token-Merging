@@ -84,8 +84,8 @@ SUPPLEMENT_FILES: List[str] = [
 MODEL_TYPE = "t5"   # "bert" | "t5"
 
 _MODEL_CONFIGS = {
-    "bert": "bert-base-uncased",
-    # "t5":   "t5-base",
+    # "bert": "bert-base-uncased",
+    "t5":   "t5-base",
 }
 
 if MODEL_TYPE not in _MODEL_CONFIGS:
