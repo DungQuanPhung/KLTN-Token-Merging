@@ -53,7 +53,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import AutoModel, T5EncoderModel, AutoTokenizer
-from sklearn.metrics import f1_score, accuracy_score, classification_report
+from sklearn.metrics import f1_score, accuracy_score, classification_report, precision_score, recall_score
 
 from dataset_utils import (
     ApcFileDataset,
@@ -137,9 +137,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, use_pre_tome, display_name, short_id)
 CONFIGS: List[Tuple] = [
     # Baseline with different loss/ES weights
-    # (False, False, False, True, "bipartite",          False, "Baseline (Sent-focus)", "baseline_sent_focus"),
-    # (False, False, False, True, "bipartite",          False, "Baseline (Cat-focus)",  "baseline_cat_focus"),
-    # (False, False, False, True, "bipartite",          False, "Baseline (Balanced)",   "baseline_balanced"),
+    (False, False, False, True, "bipartite",          False, "Baseline (Balanced)",   "baseline_balanced"),
     # ── Post-BERT ToMe (original configs) ─────────────────────────────────────
     # set use_cdm=True/False for LCF configs to compare CDW vs CDM
     # (True,  True,  False, True,  "bipartite",          False, "LCF only",              "lcf_only"),
@@ -280,7 +278,9 @@ def evaluate(
         "aspect_cat_acc":  round(accuracy_score(cat_true, cat_pred) * 100, 2),
         "aspect_cat_f1":   round(f1_score(cat_true,  cat_pred,  average="macro",  zero_division=0) * 100, 2),
         "joint_acc":       round(accuracy_score(joint_true, joint_pred) * 100, 2),
-        "joint_f1":        round(f1_score(joint_true, joint_pred, average="macro", zero_division=0) * 100, 2),
+        "joint_f1":        round(f1_score(joint_true,       joint_pred, average="macro", zero_division=0) * 100, 2),
+        "joint_precision": round(precision_score(joint_true, joint_pred, average="macro", zero_division=0) * 100, 2),
+        "joint_recall":    round(recall_score(joint_true,    joint_pred, average="macro", zero_division=0) * 100, 2),
         "sent_pred": sent_pred, "sent_true": sent_true,
         "cat_pred":  cat_pred,  "cat_true":  cat_true,
     }
@@ -464,6 +464,24 @@ def train_joint(
         average=None, zero_division=0, labels=list(range(len(aspect_cat_map)))
     ) * 100
 
+    # ── Per-category × per-sentiment F1 (within each category's sample subset) ─
+    cat_sent_f1 = {}
+    for ci, cat_lbl in enumerate(cat_labels_order):
+        indices = [i for i, c in enumerate(test_m["cat_true"]) if c == ci]
+        if not indices:
+            for sent_lbl in SENTIMENT_LABELS:
+                cat_sent_f1[f"cs_f1_{cat_lbl}_{sent_lbl}"] = 0.0
+            continue
+        s_true_ci = [test_m["sent_true"][i] for i in indices]
+        s_pred_ci = [test_m["sent_pred"][i] for i in indices]
+        per_cls = f1_score(
+            s_true_ci, s_pred_ci,
+            average=None, zero_division=0,
+            labels=list(range(len(SENTIMENT_LABELS))),
+        ) * 100
+        for si, sent_lbl in enumerate(SENTIMENT_LABELS):
+            cat_sent_f1[f"cs_f1_{cat_lbl}_{sent_lbl}"] = round(float(per_cls[si]), 2)
+
     # ── Print reports ─────────────────────────────────────────────────────────
     print(f"\n  ── Test results [{short_id}] ──")
     print("  Sentiment classification report:")
@@ -495,7 +513,11 @@ def train_joint(
            for i in range(len(cat_labels_order))},
         # Joint: both sentiment AND category correct simultaneously
         "joint_f1":        test_m["joint_f1"],
+        "joint_precision": test_m["joint_precision"],
+        "joint_recall":    test_m["joint_recall"],
         "joint_acc":       test_m["joint_acc"],
+        # Per-category × per-sentiment F1
+        **cat_sent_f1,
     }
     return result
 
@@ -507,7 +529,7 @@ def print_summary_table(
     labels:  List[str],
     cat_labels_order: List[str],
 ) -> None:
-    W = 124
+    W = 148
     print(f"\n{'═' * W}")
     print("EXPERIMENT SUMMARY — Joint training (Sent: main+supp | Cat: main only)")
     print(f"{'═' * W}")
@@ -521,7 +543,7 @@ def print_summary_table(
     print(f"\n{'─' * W}")
     print(f"  {'Configuration':<26} {'LCF':>4} {'PreToMe':>7} {'Strategy':<16} {'Resize':>6}"
           f" {'Time(s)':>8} {'BestEp':>7}"
-          f" {'Sent-F1':>9} {'Cat-F1':>8} {'Joint-F1':>9} {'SentAcc':>8} {'CatAcc':>8}")
+          f" {'Sent-F1':>9} {'Cat-F1':>8} {'Joint-F1':>9} {'Joint-P':>8} {'Joint-R':>8} {'SentAcc':>8} {'CatAcc':>8}")
     print(f"{'─' * W}")
 
     baseline_time = next(
@@ -543,6 +565,8 @@ def print_summary_table(
             f" {r['train_time_sec']:>8.1f} {r['best_epoch']:>7d}"
             f" {r['sentiment_f1']:>8.2f}% {r['aspect_cat_f1']:>7.2f}%"
             f" {r.get('joint_f1', 0):>8.2f}%"
+            f" {r.get('joint_precision', 0):>7.2f}%"
+            f" {r.get('joint_recall', 0):>7.2f}%"
             f" {r['sentiment_acc']:>8.2f}% {r['aspect_cat_acc']:>8.2f}%{speedup}"
         )
     print(f"  {'Configuration':<26} {'LCF':>4}", end="")
@@ -570,6 +594,23 @@ def print_summary_table(
         for lbl in cat_labels_order:
             print(f" {r.get(f'cat_f1_{lbl}', 0):>9.2f}%", end="")
         print()
+
+    # ── Per-category × per-sentiment F1-micro table ──────────────────────────
+    print(f"\n{'─' * W}")
+    print("  Per-Category × Sentiment F1-micro  (sentiment F1 restricted to samples of each category)")
+    for cat_lbl in cat_labels_order:
+        print(f"\n  Category: {cat_lbl}")
+        print(f"  {'Configuration':<26} {'LCF':>4}", end="")
+        for sent_lbl in SENTIMENT_LABELS:
+            print(f" {'F1-' + sent_lbl:>12}", end="")
+        print()
+        print(f"  {'─' * (34 + 13 * len(SENTIMENT_LABELS))}")
+        for r, label in zip(results, labels):
+            lcf_tag = "Y" if r["use_lcf"] else "N"
+            print(f"  {label:<26} {lcf_tag:>4}", end="")
+            for sent_lbl in SENTIMENT_LABELS:
+                print(f" {r.get(f'cs_f1_{cat_lbl}_{sent_lbl}', 0):>11.2f}%", end="")
+            print()
 
     print(f"\n{'═' * W}")
     print("  Sent training : main .apc + supplement (negative.tsv + neutral.tsv)")
@@ -718,9 +759,13 @@ def main() -> None:
          "use_pre_tome",
          "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
          "train_time_sec", "best_epoch", "best_dev_loss",
-         "sentiment_f1", "sentiment_acc", "aspect_cat_acc", "aspect_cat_f1"]
+         "sentiment_f1", "sentiment_acc", "aspect_cat_acc", "aspect_cat_f1",
+         "joint_f1", "joint_precision", "joint_recall", "joint_acc"]
         + [f"sent_f1_{l}" for l in SENTIMENT_LABELS]
         + [f"cat_f1_{l}" for l in cat_labels_order]
+        + [f"cs_f1_{cat_lbl}_{sent_lbl}"
+           for cat_lbl in cat_labels_order
+           for sent_lbl in SENTIMENT_LABELS]
     )
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
