@@ -59,15 +59,15 @@ class APCPredictor:
         category_labels: List[str],
         device: torch.device,
         max_seq_len: int = 128,
-        clause_split: bool = False,
+        clause_split_mode: str = "none",
     ) -> None:
-        self.model            = model
-        self.tokenizer        = tokenizer
-        self.sentiment_labels = sentiment_labels
-        self.category_labels  = category_labels
-        self.device           = device
-        self.max_seq_len      = max_seq_len
-        self.clause_split     = clause_split
+        self.model             = model
+        self.tokenizer         = tokenizer
+        self.sentiment_labels  = sentiment_labels
+        self.category_labels   = category_labels
+        self.device            = device
+        self.max_seq_len       = max_seq_len
+        self.clause_split_mode = clause_split_mode
         self.model.to(device)
         self.model.eval()
 
@@ -134,12 +134,19 @@ class APCPredictor:
         state = torch.load(str(weight_path), map_location=dev)
         model.load_state_dict(state)
 
-        clause_split: bool = cfg.get("clause_split", False)
+        # Read clause_split_mode from meta.json; fall back to legacy bool field.
+        raw_mode = cfg.get("clause_split_mode")
+        if raw_mode is not None:
+            clause_split_mode: str = str(raw_mode)
+        elif cfg.get("clause_split", False):
+            clause_split_mode = "uos"
+        else:
+            clause_split_mode = "none"
 
         tokenizer = AutoTokenizer.from_pretrained(bert_name)
         print(f"[APC] Loaded weights from {weight_path.name}")
         print(f"[APC] sentiment={sentiment_labels}  categories={category_labels}")
-        print(f"[APC] clause_split={clause_split}")
+        print(f"[APC] clause_split_mode={clause_split_mode!r}")
 
         return cls(
             model=model,
@@ -148,7 +155,7 @@ class APCPredictor:
             category_labels=category_labels,
             device=dev,
             max_seq_len=max_seq_len,
-            clause_split=clause_split,
+            clause_split_mode=clause_split_mode,
         )
 
     @torch.no_grad()
@@ -158,16 +165,18 @@ class APCPredictor:
         Tokenisation follows SPC format: [CLS] text [SEP] aspect [SEP]
         LCF vec: binary 1.0 at aspect subword positions in segment A.
 
-        When ``self.clause_split`` is True (read from meta.json), the sentence
-        is narrowed to the clause containing the aspect before tokenisation —
-        matching the preprocessing applied during training.
+        When ``self.clause_split_mode`` is not ``"none"`` (read from meta.json),
+        the sentence is narrowed to the clause containing the aspect before
+        tokenisation — matching the preprocessing applied during training.
         """
         asp_stripped = aspect.strip()
         asp_cs = text.find(asp_stripped)
         asp_ce = asp_cs + len(asp_stripped) - 1 if asp_cs >= 0 else -1
 
-        if self.clause_split and asp_cs >= 0:
-            text, asp_cs, asp_ce = extract_aspect_clause(text, asp_cs, asp_ce)
+        if self.clause_split_mode != "none" and asp_cs >= 0:
+            text, asp_cs, asp_ce = extract_aspect_clause(
+                text, asp_cs, asp_ce, mode=self.clause_split_mode
+            )
 
         enc = self.tokenizer(
             text,
@@ -230,9 +239,9 @@ class APCPredictor:
 class PipelineInference:
     """Two-stage pipeline: ATE (T5) → APC (BERT multitask).
 
-    When ``clause_split=True`` the sentence is split into clauses first;
-    each clause is processed by ATE and APC independently, so aspects
-    are always classified against the clause they belong to.
+    When ``clause_split_mode`` is not ``"none"`` the sentence is split into
+    clauses first; each clause is processed by ATE and APC independently, so
+    aspects are always classified against the clause they belong to.
 
     Pipeline.predict(sentence) returns one dict per extracted aspect term:
         [
@@ -246,11 +255,11 @@ class PipelineInference:
         self,
         ate_model: T5AspectExtractor,
         apc_model: APCPredictor,
-        clause_split: bool = False,
+        clause_split_mode: str = "none",
     ) -> None:
-        self.ate          = ate_model
-        self.apc          = apc_model
-        self.clause_split = clause_split
+        self.ate               = ate_model
+        self.apc               = apc_model
+        self.clause_split_mode = clause_split_mode
 
     @classmethod
     def load(
@@ -260,7 +269,7 @@ class PipelineInference:
         bert_name: str = "bert-base-uncased",
         device: Optional[torch.device] = None,
         max_seq_len: int = 128,
-        clause_split: bool = False,
+        clause_split_mode: str = "none",
     ) -> "PipelineInference":
         """Load both checkpoints.
 
@@ -270,7 +279,7 @@ class PipelineInference:
                                   + meta.json — output of run_joint_experiments.py
                                   e.g. runs_joint/lcf_only/
             bert_name           : BERT variant used for APC training
-            clause_split        : split sentence into clauses before ATE+APC
+            clause_split_mode   : ``"none"``, ``"rulebase"``, or ``"uos"``
         """
         dev = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -285,8 +294,8 @@ class PipelineInference:
             max_seq_len=max_seq_len,
         )
 
-        print(f"[pipeline] clause_split={clause_split}")
-        return cls(ate_model=ate, apc_model=apc, clause_split=clause_split)
+        print(f"[pipeline] clause_split_mode={clause_split_mode!r}")
+        return cls(ate_model=ate, apc_model=apc, clause_split_mode=clause_split_mode)
 
     # Pronouns that should be resolved to the most recent aspect from the
     # previous clause rather than being treated as a new aspect term.
@@ -304,20 +313,21 @@ class PipelineInference:
     def predict(self, sentence: str) -> List[Dict[str, str]]:
         """Run the full pipeline on one sentence.
 
-        If ``clause_split=True``: split sentence → each clause → ATE → APC.
-        Pronoun resolution: if ATE returns ``"it"`` for a clause, it is
-        replaced by the last valid aspect term extracted from a previous
-        clause.  If no previous aspect is available, the pronoun is skipped.
+        If ``clause_split_mode`` is not ``"none"``: split sentence → each
+        clause → ATE → APC.  Pronoun resolution: if ATE returns ``"it"`` for
+        a clause, it is replaced by the last valid aspect term extracted from a
+        previous clause.  If no previous aspect is available, the pronoun is
+        skipped.
 
         Otherwise: ATE → APC on the full sentence (``"it"`` aspects are
         skipped because no clause context exists to resolve them).
         """
-        if self.clause_split:
+        if self.clause_split_mode != "none":
             results: List[Dict[str, str]] = []
             # Last non-pronoun aspect seen in any *previous* clause.
             prev_clause_aspect: Optional[str] = None
 
-            for clause_text, _ in split_into_clauses(sentence):
+            for clause_text, _ in split_into_clauses(sentence, mode=self.clause_split_mode):
                 clause_aspects = predict_aspects(self.ate, clause_text)
                 # Track the last valid aspect within this clause separately so
                 # that prev_clause_aspect only advances after the clause ends.
@@ -355,7 +365,7 @@ class PipelineInference:
         ate_batch_size: int = 16,
     ) -> List[List[Dict[str, str]]]:
         """Run pipeline on multiple sentences."""
-        if self.clause_split:
+        if self.clause_split_mode != "none":
             return [self.predict(s) for s in sentences]
 
         from src.inference import predict_batch as ate_predict_batch
@@ -394,16 +404,21 @@ def main() -> None:
     parser.add_argument("--bert-name", default="bert-base-uncased")
     parser.add_argument("--sentence", default=None,
                         help="Single sentence to predict (interactive if omitted)")
-    parser.add_argument("--clause-split", action="store_true", default=False,
-                        help="Split sentence into clauses before ATE+APC "
-                             "(each clause is processed independently)")
+    parser.add_argument(
+        "--clause-split-mode",
+        default="none",
+        choices=["none", "rulebase", "uos"],
+        help="Clause splitting mode: 'none' (full sentence), "
+             "'rulebase' (regex boundaries), 'uos' (LLM via Ollama). "
+             "Default: none",
+    )
     args = parser.parse_args()
 
     pipe = PipelineInference.load(
         ate_checkpoint=args.ate_checkpoint,
         apc_checkpoint_dir=args.apc_checkpoint_dir,
         bert_name=args.bert_name,
-        clause_split=args.clause_split,
+        clause_split_mode=args.clause_split_mode,
     )
 
     if args.sentence:

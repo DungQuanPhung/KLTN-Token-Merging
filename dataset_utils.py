@@ -313,21 +313,22 @@ class ApcFileDataset(Dataset):
         aspect_cat_map: Dict[str, int],
         max_seq_len: int = 128,
         supplement_paths: Optional[List[str]] = None,
-        clause_split: bool = False,
+        clause_split_mode: str = "none",
     ) -> None:
         """
         Args:
-            apc_path         : path to the main 4-line .apc file.
-            tokenizer        : HuggingFace tokenizer.
-            aspect_cat_map   : {category_str: int} mapping (main categories only,
-                               no SUPPLEMENT placeholder).
-            max_seq_len      : max tokenisation length.
-            supplement_paths : optional list of TSV supplement files to append
-                               to training data (typically only for train split).
-                               These samples set is_supplement=True and are
-                               excluded from category-head training.
-            clause_split     : when True, replace each sentence with the clause
-                               containing its aspect term before tokenisation.
+            apc_path          : path to the main 4-line .apc file.
+            tokenizer         : HuggingFace tokenizer.
+            aspect_cat_map    : {category_str: int} mapping (main categories only,
+                                no SUPPLEMENT placeholder).
+            max_seq_len       : max tokenisation length.
+            supplement_paths  : optional list of TSV supplement files to append
+                                to training data (typically only for train split).
+                                These samples set is_supplement=True and are
+                                excluded from category-head training.
+            clause_split_mode : ``"none"`` — use full sentences (default);
+                                ``"rulebase"`` — regex split on comma/semicolon/
+                                conjunctions; ``"uos"`` — LLM-based UOS segmenter.
         """
         raw = parse_apc_file(apc_path)
 
@@ -350,11 +351,12 @@ class ApcFileDataset(Dataset):
 
         # Clause-level preprocessing: narrow each sentence to the clause
         # containing its aspect term and adjust character offsets accordingly.
-        if clause_split:
+        if clause_split_mode != "none":
             n_shortened = 0
             for r in raw:
                 clause, new_cs, new_ce = extract_aspect_clause(
-                    r["text"], r["aspect_char_start"], r["aspect_char_end"]
+                    r["text"], r["aspect_char_start"], r["aspect_char_end"],
+                    mode=clause_split_mode,
                 )
                 if clause != r["text"]:
                     n_shortened += 1
@@ -362,7 +364,7 @@ class ApcFileDataset(Dataset):
                 r["aspect_char_start"] = new_cs
                 r["aspect_char_end"]   = new_ce
             print(
-                f"[ApcFileDataset] clause_split=True:"
+                f"[ApcFileDataset] clause_split_mode={clause_split_mode!r}:"
                 f" {n_shortened}/{len(raw)} samples shortened to aspect clause"
             )
 

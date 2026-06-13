@@ -85,7 +85,7 @@ MODEL_TYPE = "bert"   # "bert" | "t5"
 
 _MODEL_CONFIGS = {
     "bert": "bert-base-uncased",
-    "t5":   "t5-base",
+    # "t5":   "t5-base",
 }
 
 if MODEL_TYPE not in _MODEL_CONFIGS:
@@ -103,14 +103,17 @@ MAX_SEQ_LEN      = 128
 DROPOUT          = 0.1
 NUM_HEADS        = 8
 SRD_THRESHOLD    = 5  # LCF-ATEPC CDW full-weight radius α (paper default)
-TOME_MERGE_STEPS     = USE_MIXED_PRECISION = True  # Use torch.cuda.amp when running on GPU
+TOME_MERGE_STEPS     = 2     # Number of TOME merge rounds (post-BERT)
+USE_MIXED_PRECISION  = True  # Use torch.cuda.amp when running on GPU
 PRE_TOME_MERGE_STEPS = 1   # Conservative: 1 merge step before BERT encoder
 
 # ── Preprocessing config ──────────────────────────────────────────────────────
-# When True, each sentence is replaced by the clause containing its aspect term
-# before tokenisation.  Boundaries: comma, semicolon, but, yet, however,
-# although, though, whereas.  Set False to use full sentences (default).
-USE_CLAUSE_SPLIT = True
+# Clause splitting mode applied before tokenisation.
+#   "none"      — use full sentences (no splitting)
+#   "rulebase"  — regex split on comma / semicolon / adversative conjunctions
+#                 (but, yet, however, although, though, whereas); fast, no GPU
+#   "uos"       — LLM-based UOS segmenter via Ollama (requires ollama serve)
+CLAUSE_SPLIT_MODE = "rulebase"
 
 # Set True to mix supplement TSV data into sentiment-head training (recommended).
 # Set False to train on main .apc data only.
@@ -140,16 +143,16 @@ CONFIGS: List[Tuple] = [
     # ── Post-BERT ToMe (original configs) ─────────────────────────────────────
     # set use_cdm=True/False for LCF configs to compare CDW vs CDM
     # (True,  True,  False, True,  "bipartite",          False, "LCF only",              "lcf_only"),
-    (True,  True,  True,  True,  "bipartite",          True, "LCF+Bip (resize)",      "lcf_bip_resize"),
-    (True,  False, True,  True,  "bipartite",          True, "LCF+Bip (resize)",      "lcf_bip_resize"),
+    (True,  True,  True,  True,  "bipartite",          True, "LCF+Bip CDM (resize)",  "lcf_bip_cdm_resize"),
+    (True,  False, True,  True,  "bipartite",          True, "LCF+Bip CDW (resize)",  "lcf_bip_cdw_resize"),
     # (True,  True,  True,  False, "bipartite",          False, "LCF+Bip (compact)",     "lcf_bip_compact"),
     # (False, False, True,  True,  "bipartite",          False, "Bip (resize)",          "bip_resize"),
-    (True,  True,  True,  True,  "sequential_local",   True, "LCF+Seq (resize)",      "lcf_seq_resize"),
-    (True,  False, True,  True,  "sequential_local",   True, "LCF+Seq (resize)",      "lcf_seq_resize"),
+    (True,  True,  True,  True,  "sequential_local",   True, "LCF+Seq CDM (resize)",  "lcf_seq_cdm_resize"),
+    (True,  False, True,  True,  "sequential_local",   True, "LCF+Seq CDW (resize)",  "lcf_seq_cdw_resize"),
     # (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq (compact)",     "lcf_seq_compact"),
     # (False, False, True,  True,  "sequential_local",   False, "Seq (resize)",          "seq_resize"),
-    (True,  True,  True,  True,  "attention_weighted", True, "LCF+Attn (resize)",     "lcf_attn_resize"),
-    (True,  False, True,  True,  "attention_weighted", True, "LCF+Attn (resize)",     "lcf_attn_resize"),
+    (True,  True,  True,  True,  "attention_weighted", True, "LCF+Attn CDM (resize)", "lcf_attn_cdm_resize"),
+    (True,  False, True,  True,  "attention_weighted", True, "LCF+Attn CDW (resize)", "lcf_attn_cdw_resize"),
     # (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn (compact)",   "lcf_attn_compact"),
     # (False, False, True,  True,  "attention_weighted", False, "Attn (resize)",         "attn_resize"),
     # ── Pre-BERT ToMe (merge at embedding level BEFORE BERT encoder) ──────────
@@ -427,7 +430,7 @@ def train_joint(
                     "merge_strategy": merge_strategy,
                     "use_pre_tome": use_pre_tome,
                     "pre_tome_merge_steps": PRE_TOME_MERGE_STEPS,
-                    "clause_split": USE_CLAUSE_SPLIT,
+                    "clause_split_mode": CLAUSE_SPLIT_MODE,
                 },
             }
             (ckpt_dir / "meta.json").write_text(
@@ -612,16 +615,16 @@ def main() -> None:
     # train_ds: main + supplement  (sentiment head uses ALL samples)
     #           is_supplement=True for supplement rows → category head ignores them
     # dev/test: main only
-    print(f"\nBuilding datasets … (clause_split={USE_CLAUSE_SPLIT})")
+    print(f"\nBuilding datasets … (clause_split_mode={CLAUSE_SPLIT_MODE!r})")
     train_ds = ApcFileDataset(
         str(TRAIN_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN,
         supplement_paths=avail_supplements or None,
-        clause_split=USE_CLAUSE_SPLIT,
+        clause_split_mode=CLAUSE_SPLIT_MODE,
     )
     dev_ds  = ApcFileDataset(str(DEV_APC),  tokenizer, aspect_cat_map, MAX_SEQ_LEN,
-                             clause_split=USE_CLAUSE_SPLIT)
+                             clause_split_mode=CLAUSE_SPLIT_MODE)
     test_ds = ApcFileDataset(str(TEST_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN,
-                             clause_split=USE_CLAUSE_SPLIT)
+                             clause_split_mode=CLAUSE_SPLIT_MODE)
 
     from collections import Counter
     cnt   = Counter(int(s["sentiment_label"]) for s in train_ds.samples)

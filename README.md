@@ -117,12 +117,64 @@ Output của mỗi config sẽ được lưu trong thư mục con `runs_joint/<s
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `PRETRAINED_BERT` | `bert-base-uncased` | BERT backbone |
+| `PRETRAINED_MODEL` | `bert-base-uncased` | BERT backbone |
 | `NUM_EPOCHS` | `15` | Số epoch tối đa |
 | `PATIENCE` | `4` | Early stopping |
 | `BATCH_SIZE` | `16` | Batch size |
 | `LR` | `2e-5` | Learning rate |
 | `MAX_SEQ_LEN` | `128` | Độ dài tối đa cho BERT |
+| `CLAUSE_SPLIT_MODE` | `"uos"` | Chế độ tách mệnh đề — xem mục bên dưới |
+
+---
+
+## 2b. Clause Splitting — Tách mệnh đề trước tokenisation
+
+Mỗi câu trong dataset có thể chứa nhiều aspect thuộc nhiều mệnh đề khác nhau.  
+`CLAUSE_SPLIT_MODE` kiểm soát việc thu hẹp câu xuống mệnh đề chứa aspect trước khi tokenise, giúp mô hình tập trung vào ngữ cảnh cục bộ.
+
+### Các mode
+
+| Mode | Giá trị | Mô tả |
+|---|---|---|
+| Không tách | `"none"` | Dùng toàn bộ câu gốc (không tách) |
+| Rule-based | `"rulebase"` | Tách bằng regex tại dấu `,` `;` và các liên từ đối lập: *but, yet, however, although, though, whereas* — nhanh, không cần GPU/Ollama |
+| UOS (LLM) | `"uos"` | Dùng mô hình LLM (qua Ollama) để tách thành Unit Opinion Sentences — ngữ nghĩa chính xác hơn nhưng cần `ollama serve` đang chạy |
+
+### Cách đặt mode
+
+**Training APC** — sửa một dòng trong `experiments/run_joint_experiments.py`:
+
+```python
+# "none" | "rulebase" | "uos"
+CLAUSE_SPLIT_MODE = "rulebase"
+```
+
+**Inference CLI** — truyền flag `--clause-split-mode`:
+
+```bash
+python pipeline_inference.py \
+  --ate-checkpoint checkpoints/gas_t5_ate/best \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --clause-split-mode rulebase \
+  --sentence "The room was clean but breakfast was terrible"
+```
+
+**Server** — đặt biến môi trường `CLAUSE_SPLIT_MODE` (mặc định `uos`):
+
+```bash
+set CLAUSE_SPLIT_MODE=rulebase
+```
+
+### UOS yêu cầu Ollama
+
+Nếu dùng mode `"uos"`, Ollama phải đang chạy và có model `qwen3:8b`:
+
+```bash
+ollama serve          # terminal riêng
+ollama pull qwen3:8b  # tải model nếu chưa có
+```
+
+Khi Ollama không kết nối được, UOS tự động fallback về câu gốc (không crash).
 
 ---
 
@@ -133,20 +185,22 @@ Sử dụng pipeline 2 bước để dự đoán aspect + sentiment + category.
 ### Dự đoán 1 câu
 
 ```bash
-python pipeline_inference.py 
-  --ate-checkpoint checkpoints/gas_t5_ate/best 
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize 
-  --bert-name bert-base-uncased 
-  --sentence "The food was amazing but the service was slow" --clause-split
+python pipeline_inference.py \
+  --ate-checkpoint checkpoints/gas_t5_ate/best \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --bert-name bert-base-uncased \
+  --clause-split-mode uos \
+  --sentence "The food was amazing but the service was slow"
 ```
 
 ### Chế độ interactive (nhập nhiều câu)
 
 ```bash
-python pipeline_inference.py 
-  --ate-checkpoint checkpoints/gas_t5_ate/best 
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize 
-  --bert-name bert-base-uncased --clause-split
+python pipeline_inference.py \
+  --ate-checkpoint checkpoints/gas_t5_ate/best \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --bert-name bert-base-uncased \
+  --clause-split-mode rulebase
 ```
 
 Sau đó nhập nhiều câu, nhấn Enter dòng trống để thoát.
@@ -243,15 +297,41 @@ pip install fastapi uvicorn python-docx
 
 2) Cấu hình biến môi trường cho backend (hoặc sửa trực tiếp trong `server/app.py`) và chạy bằng `uvicorn`:
 
-> Lưu ý: khi copy vào terminal **không** kèm phần chú thích trên cùng dòng. Ví dụ: `set CLAUSE_SPLIT=1  # comment` sẽ lưu cả phần `# comment` vào biến và gây lỗi.
+> Lưu ý: khi copy vào terminal **không** kèm phần chú thích trên cùng dòng. Ví dụ: `set CLAUSE_SPLIT_MODE=uos  # comment` sẽ lưu cả phần `# comment` vào biến và gây lỗi.
 
 ```bash
-# Windows (cmd)
-set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best && set APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize && set BERT_NAME=bert-base-uncased && set CLAUSE_SPLIT=1 && uvicorn server.app:app --host 0.0.0.0 --port 5000
-
-# PowerShell
+# Windows (cmd)rulebase
+set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best
+set APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize
+set BERT_NAME=bert-base-uncased
+set CLAUSE_SPLIT_MODE=uos
 uvicorn server.app:app --host 0.0.0.0 --port 5000
 ```
+
+
+winglet :
+```bash
+winget install Cloudflare.cloudflared
+cloudflared --version
+cloudflared tunnel --url http://127.0.0.1:5173
+```
+```bash
+# Linux / macOS
+ATE_CHECKPOINT=checkpoints/gas_t5_ate/best \
+APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize \
+BERT_NAME=bert-base-uncased \
+CLAUSE_SPLIT_MODE=uos \
+uvicorn server.app:app --host 0.0.0.0 --port 5000
+```
+
+Nếu dùng `CLAUSE_SPLIT_MODE=uos`, cần Ollama đang chạy trước:
+
+```bash
+ollama serve          # terminal riêng
+ollama pull qwen3:8b
+```
+
+Nếu dùng `CLAUSE_SPLIT_MODE=rulebase`, không cần Ollama.
 
 3) Chạy frontend (mở terminal trong `frontend/`):
 
@@ -281,9 +361,3 @@ curl -X POST http://localhost:5000/batch_predict -F file=@sentences.txt
 Ghi chú: backend sẽ load mô hình khi khởi động — việc này có thể mất vài phút nếu lần đầu tải trọng số lớn.
 
 ---
-Ghi chú: backend sẽ load mô hình khi khởi động — việc này có thể mất vài phút nếu lần đầu tải trọng số lớn.
-
----
-
----
-

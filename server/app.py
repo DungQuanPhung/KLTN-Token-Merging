@@ -79,15 +79,15 @@ def _get_env_int(name: str, default: int) -> int:
 ATE_CHECKPOINT = _get_env_str("ATE_CHECKPOINT", "checkpoints/gas_t5_ate/best")
 APC_CHECKPOINT_DIR = _get_env_str("APC_CHECKPOINT_DIR", "runs_joint/lcf_bip_resize")
 BERT_NAME = _get_env_str("BERT_NAME", "bert-base-uncased")
-CLAUSE_SPLIT = bool(_get_env_int("CLAUSE_SPLIT", 1))
+CLAUSE_SPLIT_MODE = _get_env_str("CLAUSE_SPLIT_MODE", "uos")  # "none" | "rulebase" | "uos"
 
 
-print(f"[server] Loading pipeline: ATE={ATE_CHECKPOINT} APC={APC_CHECKPOINT_DIR} clause_split={CLAUSE_SPLIT}")
+print(f"[server] Loading pipeline: ATE={ATE_CHECKPOINT} APC={APC_CHECKPOINT_DIR} clause_split_mode={CLAUSE_SPLIT_MODE!r}")
 PIPELINE = PipelineInference.load(
     ate_checkpoint=ATE_CHECKPOINT,
     apc_checkpoint_dir=APC_CHECKPOINT_DIR,
     bert_name=BERT_NAME,
-    clause_split=CLAUSE_SPLIT,
+    clause_split_mode=CLAUSE_SPLIT_MODE,
 )
 
 
