@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from "react";
 import "./styles.css";
 import WordCloud from "./WordCloud";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
 const SENTIMENT_META = {
   positive: { icon: "▲", label: "Positive", color: "#22c55e", bg: "#dcfce7" },
