@@ -140,27 +140,28 @@ CONFIGS: List[Tuple] = [
     (False, False, False, True, "bipartite",          False, "Baseline (Balanced)",   "baseline_balanced"),
     # ── Post-BERT ToMe (original configs) ─────────────────────────────────────
     # set use_cdm=True/False for LCF configs to compare CDW vs CDM
-    # (True,  True,  False, True,  "bipartite",          False, "LCF only",              "lcf_only"),
-    (True,  True,  True,  True,  "bipartite",          True, "LCF+Bip CDM (resize)",  "lcf_bip_cdm_resize"),
-    (True,  False, True,  True,  "bipartite",          True, "LCF+Bip CDW (resize)",  "lcf_bip_cdw_resize"),
+    (True,  True,  False, True,  "bipartite",          False, "LCF only CDM",              "lcf_only_cdm"),
+    (True,  False,  False, True,  "bipartite",          False, "LCF only CDW",              "lcf_only_cdw"),
+    (True,  True,  True,  True,  "bipartite",          False, "LCF+Bip CDM (resize)",  "lcf_bip_cdm_resize"),
+    (True,  False, True,  True,  "bipartite",          False, "LCF+Bip CDW (resize)",  "lcf_bip_cdw_resize"),
     # (True,  True,  True,  False, "bipartite",          False, "LCF+Bip (compact)",     "lcf_bip_compact"),
-    # (False, False, True,  True,  "bipartite",          False, "Bip (resize)",          "bip_resize"),
-    (True,  True,  True,  True,  "sequential_local",   True, "LCF+Seq CDM (resize)",  "lcf_seq_cdm_resize"),
-    (True,  False, True,  True,  "sequential_local",   True, "LCF+Seq CDW (resize)",  "lcf_seq_cdw_resize"),
+    (False, False, True,  True,  "bipartite",          False, "Bip (resize)",          "bip_resize"),
+    (True,  True,  True,  True,  "sequential_local",   False, "LCF+Seq CDM (resize)",  "lcf_seq_cdm_resize"),
+    (True,  False, True,  True,  "sequential_local",   False, "LCF+Seq CDW (resize)",  "lcf_seq_cdw_resize"),
     # (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq (compact)",     "lcf_seq_compact"),
-    # (False, False, True,  True,  "sequential_local",   False, "Seq (resize)",          "seq_resize"),
-    (True,  True,  True,  True,  "attention_weighted", True, "LCF+Attn CDM (resize)", "lcf_attn_cdm_resize"),
-    (True,  False, True,  True,  "attention_weighted", True, "LCF+Attn CDW (resize)", "lcf_attn_cdw_resize"),
+    (False, False, True,  True,  "sequential_local",   False, "Seq (resize)",          "seq_resize"),
+    (True,  True,  True,  True,  "attention_weighted", False, "LCF+Attn CDM (resize)", "lcf_attn_cdm_resize"),
+    (True,  False, True,  True,  "attention_weighted", False, "LCF+Attn CDW (resize)", "lcf_attn_cdw_resize"),
     # (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn (compact)",   "lcf_attn_compact"),
-    # (False, False, True,  True,  "attention_weighted", False, "Attn (resize)",         "attn_resize"),
+    (False, False, True,  True,  "attention_weighted", False, "Attn (resize)",         "attn_resize"),
     # ── Pre-BERT ToMe (merge at embedding level BEFORE BERT encoder) ──────────
     # use_tome=False below means NO post-BERT merge; combine True+True for both
-    # (True,  True,  False, True,  "bipartite",          True,  "LCF+PreBip (resize)",   "lcf_pre_bip"),
-    # (True,  True,  False, True,  "sequential_local",   True,  "LCF+PreSeq (resize)",   "lcf_pre_seq"),
-    # (True,  True,  False, True,  "attention_weighted", True,  "LCF+PreAttn (resize)",  "lcf_pre_attn"),
+    # (True,  True,  False, True,  "bipartite",          False,  "LCF+PreBip (resize)",   "lcf_pre_bip"),
+    # (True,  True,  False, True,  "sequential_local",   False,  "LCF+PreSeq (resize)",   "lcf_pre_seq"),
+    # (True,  True,  False, True,  "attention_weighted", False,  "LCF+PreAttn (resize)",  "lcf_pre_attn"),
     # ── Pre-BERT + Post-BERT combined ─────────────────────────────────────────
-    # (True,  True,  True,  True,  "bipartite",          True,  "LCF+Pre+PostBip",       "lcf_pre_post_bip"),
-    # (True,  True,  True,  True,  "sequential_local",   True,  "LCF+Pre+PostSeq",       "lcf_pre_post_seq"),
+    # (True,  True,  True,  True,  "bipartite",          False,  "LCF+Pre+PostBip",       "lcf_pre_post_bip"),
+    # (True,  True,  True,  True,  "sequential_local",   False,  "LCF+Pre+PostSeq",       "lcf_pre_post_seq"),
 ]
 
 
