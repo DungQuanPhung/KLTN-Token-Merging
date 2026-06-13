@@ -81,7 +81,7 @@ SUPPLEMENT_FILES: List[str] = [
 # Change MODEL_TYPE to switch between encoders.  Add new entries to
 # _MODEL_CONFIGS to register additional pretrained checkpoints.
 
-MODEL_TYPE = "bert"   # "bert" | "t5"
+MODEL_TYPE = "t5"   # "bert" | "t5"
 
 _MODEL_CONFIGS = {
     "bert": "bert-base-uncased",
