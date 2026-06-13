@@ -657,16 +657,13 @@ def main() -> None:
     # train_ds: main + supplement  (sentiment head uses ALL samples)
     #           is_supplement=True for supplement rows → category head ignores them
     # dev/test: main only
-    print(f"\nBuilding datasets … (clause_split_mode={CLAUSE_SPLIT_MODE!r})")
+    print(f"\nBuilding datasets … (clause_split_mode=none during training)")
     train_ds = ApcFileDataset(
         str(TRAIN_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN,
         supplement_paths=avail_supplements or None,
-        clause_split_mode=CLAUSE_SPLIT_MODE,
     )
-    dev_ds  = ApcFileDataset(str(DEV_APC),  tokenizer, aspect_cat_map, MAX_SEQ_LEN,
-                             clause_split_mode=CLAUSE_SPLIT_MODE)
-    test_ds = ApcFileDataset(str(TEST_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN,
-                             clause_split_mode=CLAUSE_SPLIT_MODE)
+    dev_ds  = ApcFileDataset(str(DEV_APC),  tokenizer, aspect_cat_map, MAX_SEQ_LEN)
+    test_ds = ApcFileDataset(str(TEST_APC), tokenizer, aspect_cat_map, MAX_SEQ_LEN)
 
     from collections import Counter
     cnt   = Counter(int(s["sentiment_label"]) for s in train_ds.samples)

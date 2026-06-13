@@ -127,42 +127,58 @@ Output của mỗi config sẽ được lưu trong thư mục con `runs_joint/<s
 
 ---
 
-## 2b. Clause Splitting — Tách mệnh đề trước tokenisation
+## 2b. Clause Splitting — Tách mệnh đề lúc inference
 
-Mỗi câu trong dataset có thể chứa nhiều aspect thuộc nhiều mệnh đề khác nhau.  
-`CLAUSE_SPLIT_MODE` kiểm soát việc thu hẹp câu xuống mệnh đề chứa aspect trước khi tokenise, giúp mô hình tập trung vào ngữ cảnh cục bộ.
+> **Lưu ý:** Clause splitting **chỉ được áp dụng lúc inference**, không áp dụng khi training.  
+> Training luôn dùng toàn bộ câu gốc (`clause_split_mode="none"`).
+
+Khi inference, mỗi câu có thể chứa nhiều aspect thuộc nhiều mệnh đề khác nhau.  
+Clause splitting thu hẹp câu xuống đúng mệnh đề chứa aspect trước khi đưa vào mô hình, giúp dự đoán chính xác hơn.
 
 ### Các mode
 
 | Mode | Giá trị | Mô tả |
 |---|---|---|
-| Không tách | `"none"` | Dùng toàn bộ câu gốc (không tách) |
+| Không tách | `"none"` | Dùng toàn bộ câu gốc |
 | Rule-based | `"rulebase"` | Tách bằng regex tại dấu `,` `;` và các liên từ đối lập: *but, yet, however, although, though, whereas* — nhanh, không cần GPU/Ollama |
-| UOS (LLM) | `"uos"` | Dùng mô hình LLM (qua Ollama) để tách thành Unit Opinion Sentences — ngữ nghĩa chính xác hơn nhưng cần `ollama serve` đang chạy |
+| UOS (LLM) | `"uos"` | Dùng LLM qua Ollama để tách thành Unit Opinion Sentences — chính xác hơn về ngữ nghĩa nhưng cần `ollama serve` đang chạy |
 
-### Cách đặt mode
+### Cách chuyển đổi mode
 
-**Training APC** — sửa một dòng trong `experiments/run_joint_experiments.py`:
-
-```python
-# "none" | "rulebase" | "uos"
-CLAUSE_SPLIT_MODE = "rulebase"
-```
-
-**Inference CLI** — truyền flag `--clause-split-mode`:
+**Cách 1 — Inference CLI** (`pipeline_inference.py`), dùng flag `--clause-split-mode`:
 
 ```bash
+# Dùng rulebase (nhanh, không cần Ollama)
 python pipeline_inference.py \
   --ate-checkpoint checkpoints/gas_t5_ate/best \
   --apc-checkpoint-dir runs_joint/lcf_bip_resize \
   --clause-split-mode rulebase \
   --sentence "The room was clean but breakfast was terrible"
+
+# Dùng UOS (LLM-based, cần Ollama)
+python pipeline_inference.py \
+  --ate-checkpoint checkpoints/gas_t5_ate/best \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --clause-split-mode uos \
+  --sentence "The room was clean but breakfast was terrible"
+
+# Không tách (dùng toàn câu)
+python pipeline_inference.py \
+  --ate-checkpoint checkpoints/gas_t5_ate/best \
+  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --clause-split-mode none \
+  --sentence "The room was clean but breakfast was terrible"
 ```
 
-**Server** — đặt biến môi trường `CLAUSE_SPLIT_MODE` (mặc định `uos`):
+**Cách 2 — Server** (`server/app.py`), đặt biến môi trường `CLAUSE_SPLIT_MODE` trước khi chạy uvicorn (mặc định `"uos"`):
 
 ```bash
+# Windows (cmd)
 set CLAUSE_SPLIT_MODE=rulebase
+uvicorn server.app:app --host 0.0.0.0 --port 5000
+
+# Linux / macOS
+CLAUSE_SPLIT_MODE=rulebase uvicorn server.app:app --host 0.0.0.0 --port 5000
 ```
 
 ### UOS yêu cầu Ollama
