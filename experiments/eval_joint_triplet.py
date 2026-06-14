@@ -262,6 +262,66 @@ def micro_prf(
     }
 
 
+# ─── Macro P/R/F1 over categories ────────────────────────────────────────────
+
+def macro_prf(
+    gold_by_sent:  Dict[str, Set[Tuple]],
+    pred_by_sent:  Dict[str, Set[Tuple]],
+    all_sentences: List[str],
+) -> Dict[str, float]:
+    """Macro F1 over triplet classes (category, sentiment) pairs.
+
+    Mỗi class = 1 unique (category, sentiment) combination trong gold.
+    Average F1 across classes — equal weight cho minority classes.
+    """
+    from collections import defaultdict as _dd
+
+    cls_tp: Dict[Tuple, int] = _dd(int)
+    cls_fp: Dict[Tuple, int] = _dd(int)
+    cls_fn: Dict[Tuple, int] = _dd(int)
+
+    for sent in all_sentences:
+        gold = gold_by_sent.get(sent, set())
+        pred = pred_by_sent.get(sent, set())
+
+        # Group by (category, sentiment) — index 1 and 2 of triplet
+        gold_by_cls: Dict[Tuple, set] = _dd(set)
+        pred_by_cls: Dict[Tuple, set] = _dd(set)
+        for t in gold:
+            gold_by_cls[(t[1], t[2])].add(t)
+        for t in pred:
+            pred_by_cls[(t[1], t[2])].add(t)
+
+        for cls in set(gold_by_cls) | set(pred_by_cls):
+            tp = len(gold_by_cls[cls] & pred_by_cls[cls])
+            cls_tp[cls] += tp
+            cls_fp[cls] += len(pred_by_cls[cls]) - tp
+            cls_fn[cls] += len(gold_by_cls[cls]) - tp
+
+    # Only average over classes present in gold
+    gold_classes = {(t[1], t[2]) for s in all_sentences for t in gold_by_sent.get(s, set())}
+    if not gold_classes:
+        return {"precision": 0.0, "recall": 0.0, "f1": 0.0, "per_class": {}}
+
+    p_list, r_list, f1_list = [], [], []
+    per_class: Dict[str, float] = {}
+    for cls in sorted(gold_classes):
+        tp = cls_tp[cls]; fp = cls_fp[cls]; fn = cls_fn[cls]
+        p  = tp / max(tp + fp, 1)
+        r  = tp / max(tp + fn, 1)
+        f1 = 2 * p * r / max(p + r, 1e-9)
+        p_list.append(p); r_list.append(r); f1_list.append(f1)
+        per_class[f"{cls[0]}_{cls[1]}"] = round(f1 * 100, 2)
+
+    n = len(gold_classes)
+    return {
+        "precision": round(sum(p_list)  / n * 100, 2),
+        "recall":    round(sum(r_list)  / n * 100, 2),
+        "f1":        round(sum(f1_list) / n * 100, 2),
+        "per_class": per_class,
+    }
+
+
 # ─── ATE-only metrics (term extraction, ignore cat+sent) ─────────────────────
 
 def ate_metrics(
@@ -330,9 +390,13 @@ def main() -> None:
         print(f"  Running inference on {sum(len(v) for v in ate_preds.values())} terms …")
         pred_by_sent = predict_triplets(model, tokenizer, ate_preds, cat_map, cat_labels)
 
-        m = micro_prf(gold_by_sent, pred_by_sent, all_sentences)
-        print(f"  Joint triplet → P={m['precision']}%  R={m['recall']}%  F1={m['f1']}%"
+        m      = micro_prf(gold_by_sent, pred_by_sent, all_sentences)
+        macro  = macro_prf(gold_by_sent, pred_by_sent, all_sentences)
+        print(f"  Micro → P={m['precision']}%  R={m['recall']}%  F1={m['f1']}%"
               f"  (TP={m['tp']} FP={m['fp']} FN={m['fn']})")
+        print(f"  Macro → P={macro['precision']}%  R={macro['recall']}%  F1={macro['f1']}%")
+        for cls, f1_cls in macro["per_class"].items():
+            print(f"    {cls:<22}: {f1_cls:.2f}%")
 
         rows.append({
             "config":            config_name,
@@ -340,12 +404,17 @@ def main() -> None:
             "ate_f1":            ate_m["f1"],
             "ate_precision":     ate_m["precision"],
             "ate_recall":        ate_m["recall"],
-            "joint_precision":   m["precision"],
-            "joint_recall":      m["recall"],
-            "joint_f1":          m["f1"],
+            "micro_precision":   m["precision"],
+            "micro_recall":      m["recall"],
+            "micro_f1":          m["f1"],
+            "macro_precision":   macro["precision"],
+            "macro_recall":      macro["recall"],
+            "macro_f1":          macro["f1"],
             "tp":                m["tp"],
             "fp":                m["fp"],
             "fn":                m["fn"],
+            **{f"f1_{cls}": macro["per_class"].get(cls, 0.0)
+               for cls in sorted(macro["per_class"])},
         })
 
         del model
@@ -353,36 +422,46 @@ def main() -> None:
             torch.cuda.empty_cache()
 
     # ── Summary table ──────────────────────────────────────────────────────────
-    W = 106
+    W = 126
     print(f"\n{'═' * W}")
     print("JOINT TRIPLET EVALUATION  (term ∩ category ∩ sentiment — ALL 3 phải đúng)")
     print(f"{'═' * W}")
-    print(f"  {'Config':<26}  {'Time(s)':>8}  {'ATE-F1':>8}  {'Joint-P':>8}"
-          f"  {'Joint-R':>8}  {'Joint-F1':>9}  {'TP':>5}  {'FP':>5}  {'FN':>5}")
+    print(f"  {'Config':<26}  {'Time(s)':>8}  {'ATE-F1':>8}"
+          f"  {'Micro-P':>8}  {'Micro-R':>8}  {'Micro-F1':>9}"
+          f"  {'Macro-P':>8}  {'Macro-R':>8}  {'Macro-F1':>9}"
+          f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
     print(f"{'─' * W}")
     for row in rows:
         t = row["train_time_sec"]
-        time_str = f"{t:>7.1f}s" if t == t else "     N/A"   # NaN check
+        time_str = f"{t:>7.1f}s" if t == t else "     N/A"
         print(
             f"  {row['config']:<26}  {time_str}"
             f"  {row['ate_f1']:>7.2f}%"
-            f"  {row['joint_precision']:>7.2f}%"
-            f"  {row['joint_recall']:>7.2f}%"
-            f"  {row['joint_f1']:>8.2f}%"
+            f"  {row['micro_precision']:>7.2f}%"
+            f"  {row['micro_recall']:>7.2f}%"
+            f"  {row['micro_f1']:>8.2f}%"
+            f"  {row['macro_precision']:>7.2f}%"
+            f"  {row['macro_recall']:>7.2f}%"
+            f"  {row['macro_f1']:>8.2f}%"
             f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
         )
     print(f"{'═' * W}")
-    print("  Time(s)  : thời gian train (giây)")
-    print("  ATE-F1   : F1 của step trích xuất aspect term (T5)")
-    print("  Joint-F1 : micro F1 khi cả 3 label (term, category, sentiment) đều đúng")
+    print("  ATE-F1    : F1 trích xuất aspect term (T5)")
+    print("  Micro-F1  : micro F1 triplet — phản ánh overall performance")
+    print("  Macro-F1  : macro F1 triplet theo category — nhạy với minority class")
     print(f"{'═' * W}")
 
     # ── Save CSV ───────────────────────────────────────────────────────────────
+    # Collect all category keys that appeared across any config
+    all_cat_keys = sorted({k for row in rows for k in row if k.startswith("f1_")})
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
             fieldnames=["config", "train_time_sec", "ate_f1", "ate_precision", "ate_recall",
-                        "joint_precision", "joint_recall", "joint_f1", "tp", "fp", "fn"],
+                        "micro_precision", "micro_recall", "micro_f1",
+                        "macro_precision", "macro_recall", "macro_f1",
+                        "tp", "fp", "fn"] + all_cat_keys,
+            extrasaction="ignore",
         )
         writer.writeheader()
         writer.writerows(rows)

@@ -444,10 +444,13 @@ def evaluate(
         "sentiment_f1":    round(f1_score(sent_true, sent_pred, average="micro",  zero_division=0) * 100, 2),
         "aspect_cat_acc":  round(accuracy_score(cat_true, cat_pred) * 100, 2),
         "aspect_cat_f1":   round(f1_score(cat_true,  cat_pred,  average="micro",  zero_division=0) * 100, 2),
-        "joint_acc":       round(accuracy_score(joint_true, joint_pred) * 100, 2),
-        "joint_f1":        round(f1_score(joint_true,       joint_pred, average="micro", zero_division=0) * 100, 2),
-        "joint_precision": round(precision_score(joint_true, joint_pred, average="micro", zero_division=0) * 100, 2),
-        "joint_recall":    round(recall_score(joint_true,    joint_pred, average="micro", zero_division=0) * 100, 2),
+        "joint_acc":          round(accuracy_score(joint_true, joint_pred) * 100, 2),
+        "joint_f1":           round(f1_score(joint_true,       joint_pred, average="micro", zero_division=0) * 100, 2),
+        "joint_precision":    round(precision_score(joint_true, joint_pred, average="micro", zero_division=0) * 100, 2),
+        "joint_recall":       round(recall_score(joint_true,    joint_pred, average="micro", zero_division=0) * 100, 2),
+        "joint_f1_macro":     round(f1_score(joint_true,       joint_pred, average="macro", zero_division=0) * 100, 2),
+        "joint_precision_macro": round(precision_score(joint_true, joint_pred, average="macro", zero_division=0) * 100, 2),
+        "joint_recall_macro":    round(recall_score(joint_true,    joint_pred, average="macro", zero_division=0) * 100, 2),
         "sent_pred": sent_pred, "sent_true": sent_true,
         "cat_pred":  cat_pred,  "cat_true":  cat_true,
     }
@@ -738,7 +741,7 @@ def print_summary_table(
     print(f"\n{'─' * W}")
     print(f"  {'Configuration':<26} {'LCF':>4} {'PreToMe':>7} {'Strategy':<16} {'Resize':>6}"
           f" {'Time(s)':>8} {'BestEp':>7}"
-          f" {'Sent-F1':>9} {'Cat-F1':>8} {'Joint-F1':>9} {'Joint-P':>8} {'Joint-R':>8} {'SentAcc':>8} {'CatAcc':>8}")
+          f" {'Sent-F1':>9} {'Cat-F1':>8} {'Micro-F1':>9} {'Macro-F1':>9} {'Joint-P':>8} {'Joint-R':>8} {'SentAcc':>8} {'CatAcc':>8}")
     print(f"{'─' * W}")
 
     baseline_time = next(
@@ -760,6 +763,7 @@ def print_summary_table(
             f" {r['train_time_sec']:>8.1f} {r['best_epoch']:>7d}"
             f" {r['sentiment_f1']:>8.2f}% {r['aspect_cat_f1']:>7.2f}%"
             f" {r.get('joint_f1', 0):>8.2f}%"
+            f" {r.get('joint_f1_macro', 0):>8.2f}%"
             f" {r.get('joint_precision', 0):>7.2f}%"
             f" {r.get('joint_recall', 0):>7.2f}%"
             f" {r['sentiment_acc']:>8.2f}% {r['aspect_cat_acc']:>8.2f}%{speedup}"
@@ -936,6 +940,8 @@ def main() -> None:
               f"  neu={r.get('sent_f1_neutral',0):.1f}%)")
         print(f"  → Category Acc: {r['aspect_cat_acc']:.2f}%")
         print(f"  → Category  F1 : {r['aspect_cat_f1']:.2f}%")
+        print(f"  → Joint Micro  : {r['joint_f1']:.2f}%  (P={r.get('joint_precision',0):.2f}% R={r.get('joint_recall',0):.2f}%)")
+        print(f"  → Joint Macro  : {r['joint_f1_macro']:.2f}%  (P={r.get('joint_precision_macro',0):.2f}% R={r.get('joint_recall_macro',0):.2f}%)")
 
     # ── Save outputs ───────────────────────────────────────────────────────────
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -953,7 +959,8 @@ def main() -> None:
          "task_weight_sent", "task_weight_cat", "es_weight_sent", "es_weight_cat",
          "train_time_sec", "best_epoch", "best_dev_f1",
          "sentiment_f1", "sentiment_acc", "aspect_cat_acc", "aspect_cat_f1",
-         "joint_f1", "joint_precision", "joint_recall", "joint_acc"]
+         "joint_f1", "joint_precision", "joint_recall", "joint_acc",
+         "joint_f1_macro", "joint_precision_macro", "joint_recall_macro"]
         + [f"sent_f1_{l}" for l in SENTIMENT_LABELS]
         + [f"cat_f1_{l}" for l in cat_labels_order]
         + [f"cs_f1_{cat_lbl}_{sent_lbl}"
