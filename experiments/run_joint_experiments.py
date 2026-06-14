@@ -441,13 +441,13 @@ def evaluate(
     return {
         "loss":            round(total_loss / n, 4),
         "sentiment_acc":   round(accuracy_score(sent_true, sent_pred) * 100, 2),
-        "sentiment_f1":    round(f1_score(sent_true, sent_pred, average="macro",  zero_division=0) * 100, 2),
+        "sentiment_f1":    round(f1_score(sent_true, sent_pred, average="micro",  zero_division=0) * 100, 2),
         "aspect_cat_acc":  round(accuracy_score(cat_true, cat_pred) * 100, 2),
-        "aspect_cat_f1":   round(f1_score(cat_true,  cat_pred,  average="macro",  zero_division=0) * 100, 2),
+        "aspect_cat_f1":   round(f1_score(cat_true,  cat_pred,  average="micro",  zero_division=0) * 100, 2),
         "joint_acc":       round(accuracy_score(joint_true, joint_pred) * 100, 2),
-        "joint_f1":        round(f1_score(joint_true,       joint_pred, average="macro", zero_division=0) * 100, 2),
-        "joint_precision": round(precision_score(joint_true, joint_pred, average="macro", zero_division=0) * 100, 2),
-        "joint_recall":    round(recall_score(joint_true,    joint_pred, average="macro", zero_division=0) * 100, 2),
+        "joint_f1":        round(f1_score(joint_true,       joint_pred, average="micro", zero_division=0) * 100, 2),
+        "joint_precision": round(precision_score(joint_true, joint_pred, average="micro", zero_division=0) * 100, 2),
+        "joint_recall":    round(recall_score(joint_true,    joint_pred, average="micro", zero_division=0) * 100, 2),
         "sent_pred": sent_pred, "sent_true": sent_true,
         "cat_pred":  cat_pred,  "cat_true":  cat_true,
     }
@@ -479,7 +479,7 @@ def train_joint(
 
     Sentiment loss  : all samples (main + supplement) — fixes class imbalance.
     Category loss   : main samples only (supplement masked via is_supplement).
-    Early stopping  : dev sentiment macro-F1.
+    Early stopping  : dev joint micro-F1.
 
     Returns a dict with train_time_sec, per-class F1 for both tasks.
     """
@@ -611,6 +611,14 @@ def train_joint(
                 break
 
     train_time = round(time.perf_counter() - t0, 2)
+
+    # Patch train_time_sec into meta.json now that training is complete
+    import json as _json
+    _meta_path = ckpt_dir / "meta.json"
+    if _meta_path.is_file():
+        _meta = _json.loads(_meta_path.read_text(encoding="utf-8"))
+        _meta["train_time_sec"] = train_time
+        _meta_path.write_text(_json.dumps(_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if best_state is not None:
         model.load_state_dict(best_state)

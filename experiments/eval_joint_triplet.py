@@ -151,6 +151,8 @@ def load_joint_model(
     num_cat = len(cat_labels)
     cat_map = {lbl: i for i, lbl in enumerate(cat_labels)}
 
+    train_time_sec: float = meta.get("train_time_sec", float("nan"))
+
     bert  = AutoModel.from_pretrained(PRETRAINED)
     model = FastLcfBertMultiTask(
         bert=bert,
@@ -173,7 +175,7 @@ def load_joint_model(
     state = torch.load(ckpt_path, map_location="cpu", weights_only=True)
     model.load_state_dict(state)
     model.to(DEVICE).eval()
-    return model, cat_map, cat_labels
+    return model, cat_map, cat_labels, train_time_sec
 
 
 # ─── Run inference on ATE predictions for one config ─────────────────────────
@@ -320,7 +322,7 @@ def main() -> None:
         config_name = run_dir.name
         print(f"\n── Config: {config_name} ──")
         try:
-            model, cat_map, cat_labels = load_joint_model(run_dir, tokenizer)
+            model, cat_map, cat_labels, train_time_sec = load_joint_model(run_dir, tokenizer)
         except Exception as e:
             print(f"  [error] {e}")
             continue
@@ -334,6 +336,7 @@ def main() -> None:
 
         rows.append({
             "config":            config_name,
+            "train_time_sec":    train_time_sec,
             "ate_f1":            ate_m["f1"],
             "ate_precision":     ate_m["precision"],
             "ate_recall":        ate_m["recall"],
@@ -350,22 +353,26 @@ def main() -> None:
             torch.cuda.empty_cache()
 
     # ── Summary table ──────────────────────────────────────────────────────────
-    W = 92
+    W = 106
     print(f"\n{'═' * W}")
     print("JOINT TRIPLET EVALUATION  (term ∩ category ∩ sentiment — ALL 3 phải đúng)")
     print(f"{'═' * W}")
-    print(f"  {'Config':<26}  {'ATE-F1':>8}  {'Joint-P':>8}  {'Joint-R':>8}  {'Joint-F1':>9}"
-          f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
+    print(f"  {'Config':<26}  {'Time(s)':>8}  {'ATE-F1':>8}  {'Joint-P':>8}"
+          f"  {'Joint-R':>8}  {'Joint-F1':>9}  {'TP':>5}  {'FP':>5}  {'FN':>5}")
     print(f"{'─' * W}")
     for row in rows:
+        t = row["train_time_sec"]
+        time_str = f"{t:>7.1f}s" if t == t else "     N/A"   # NaN check
         print(
-            f"  {row['config']:<26}  {row['ate_f1']:>7.2f}%"
+            f"  {row['config']:<26}  {time_str}"
+            f"  {row['ate_f1']:>7.2f}%"
             f"  {row['joint_precision']:>7.2f}%"
             f"  {row['joint_recall']:>7.2f}%"
             f"  {row['joint_f1']:>8.2f}%"
             f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
         )
     print(f"{'═' * W}")
+    print("  Time(s)  : thời gian train (giây)")
     print("  ATE-F1   : F1 của step trích xuất aspect term (T5)")
     print("  Joint-F1 : micro F1 khi cả 3 label (term, category, sentiment) đều đúng")
     print(f"{'═' * W}")
@@ -374,7 +381,7 @@ def main() -> None:
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["config", "ate_f1", "ate_precision", "ate_recall",
+            fieldnames=["config", "train_time_sec", "ate_f1", "ate_precision", "ate_recall",
                         "joint_precision", "joint_recall", "joint_f1", "tp", "fp", "fn"],
         )
         writer.writeheader()
