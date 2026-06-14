@@ -58,6 +58,7 @@ from sklearn.metrics import f1_score, accuracy_score, classification_report, pre
 from dataset_utils import (
     ApcFileDataset,
     build_label_maps_from_apc,
+    parse_apc_file,
     SENTIMENT_LABELS,
     SENTIMENT_MAP,
 )
@@ -228,6 +229,51 @@ def compute_category_class_weights(
 
 
 
+
+
+# ─── Predictions CSV ──────────────────────────────────────────────────────────
+
+def save_predictions_csv(
+    test_apc_path: str,
+    sent_pred: List[int],
+    cat_pred:  List[int],
+    cat_id2label: Dict[str, int],
+    out_path: Path,
+) -> None:
+    """Write per-sample test predictions to a CSV file.
+
+    Columns: sentence, aspect_term, predicted_category, predicted_sentiment,
+             gold_category, gold_sentiment
+    """
+    raw = parse_apc_file(test_apc_path)
+    id2cat  = {v: k for k, v in cat_id2label.items()}
+
+    if len(raw) != len(sent_pred):
+        print(f"  [warn] save_predictions_csv: {len(raw)} samples in file "
+              f"but {len(sent_pred)} predictions — truncating to min")
+
+    n = min(len(raw), len(sent_pred), len(cat_pred))
+
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "sentence", "aspect_term",
+                "predicted_category", "predicted_sentiment",
+                "gold_category", "gold_sentiment",
+            ],
+        )
+        writer.writeheader()
+        for i in range(n):
+            writer.writerow({
+                "sentence":             raw[i]["text"],
+                "aspect_term":          raw[i]["aspect_term"],
+                "predicted_category":   id2cat.get(cat_pred[i], str(cat_pred[i])),
+                "predicted_sentiment":  SENTIMENT_LABELS[sent_pred[i]],
+                "gold_category":        raw[i]["aspect_category"],
+                "gold_sentiment":       raw[i]["sentiment"],
+            })
+    print(f"  Predictions saved → {out_path}  ({n} rows)")
 
 
 # ─── Evaluation ───────────────────────────────────────────────────────────────
@@ -451,6 +497,15 @@ def train_joint(
         best_epoch = 1
 
     test_m = evaluate(model, test_loader, sent_criterion, cat_criterion)
+
+    # ── Save per-sample predictions to CSV ───────────────────────────────────
+    save_predictions_csv(
+        test_apc_path=str(TEST_APC),
+        sent_pred=test_m["sent_pred"],
+        cat_pred=test_m["cat_pred"],
+        cat_id2label=aspect_cat_map,
+        out_path=ckpt_dir / "test_predictions.csv",
+    )
 
     # ── Per-class F1 ─────────────────────────────────────────────────────────
     sent_f1_per = f1_score(
