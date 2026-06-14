@@ -1,0 +1,386 @@
+# -*- coding: utf-8 -*-
+"""Joint triplet micro F1: (aspect term, category, sentiment) cả 3 phải đúng.
+
+Pipeline:
+    ATE predictions  (runs_ate/test_ate_predictions.csv)
+        → Joint model (runs_joint/<config>/best_model.pt)
+            → predicted (category, sentiment) cho mỗi predicted term
+                → so với gold triplets từ dataset/test.apc
+
+Metric (micro, theo chuẩn ABSA triplet evaluation):
+    TP  = predicted triplet khớp CHÍNH XÁC với một gold triplet
+    FP  = predicted triplet không khớp với bất kỳ gold nào
+    FN  = gold triplet không được predict đúng
+    P   = TP / (TP + FP)
+    R   = TP / (TP + FN)
+    F1  = 2PR / (P + R)
+
+Usage (from thesis_apc_baseline/):
+    python experiments/eval_joint_triplet.py
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Set, Tuple
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import torch
+import torch.nn as nn
+from transformers import AutoModel, AutoTokenizer
+
+from dataset_utils import parse_apc_file, SENTIMENT_LABELS
+from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+
+DEVICE       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+TEST_APC     = ROOT / "dataset" / "test.apc"
+ATE_CSV      = ROOT / "runs_ate" / "test_ate_predictions.csv"
+RUNS_DIR     = ROOT / "runs_joint"
+OUT_CSV      = ROOT / "runs_ate" / "eval_joint_triplet.csv"
+
+PRETRAINED   = "bert-base-uncased"
+MAX_SEQ_LEN  = 128
+BATCH_SIZE   = 32
+
+# Defaults matching run_joint_experiments.py
+_DEFAULT_CFG = dict(
+    dropout=0.1, num_heads=8, srd_threshold=5,
+    tome_merge_steps=2, pre_tome_merge_steps=1,
+)
+
+# ─── Gold triplets ────────────────────────────────────────────────────────────
+
+def load_gold_triplets(
+    apc_path: Path,
+) -> Dict[str, Set[Tuple[str, str, str]]]:
+    """Parse test.apc → {sentence_text: {(term, category, sentiment), ...}}"""
+    gold: Dict[str, Set[Tuple[str, str, str]]] = defaultdict(set)
+    for s in parse_apc_file(str(apc_path)):
+        key = s["text"]
+        triple = (
+            s["aspect_term"].strip().lower(),
+            s["aspect_category"].strip().upper(),
+            s["sentiment"].strip().lower(),
+        )
+        gold[key].add(triple)
+    return dict(gold)
+
+
+# ─── ATE predictions ──────────────────────────────────────────────────────────
+
+def load_ate_predictions(
+    ate_csv: Path,
+) -> Dict[str, List[str]]:
+    """Load runs_ate/test_ate_predictions.csv → {sentence: [predicted_term, ...]}"""
+    preds: Dict[str, List[str]] = defaultdict(list)
+    with open(ate_csv, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            term = row["predicted_term"].strip()
+            if term:
+                preds[row["sentence"]].append(term)
+    return dict(preds)
+
+
+# ─── Tokenise one (sentence, term) pair ──────────────────────────────────────
+
+def tokenize_single(
+    text: str,
+    aspect_term: str,
+    tokenizer,
+    max_seq_len: int = 128,
+) -> Dict[str, torch.Tensor]:
+    pad = tokenizer.pad_token or "[PAD]"
+    aspect = aspect_term.strip() or pad
+
+    enc = tokenizer(
+        text, aspect,
+        max_length=max_seq_len,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt",
+        return_offsets_mapping=True,
+    )
+    input_ids      = enc["input_ids"].squeeze(0)
+    attention_mask = enc["attention_mask"].squeeze(0)
+    token_type_ids = enc.get("token_type_ids", torch.zeros_like(input_ids)).squeeze(0)
+    offsets        = enc["offset_mapping"].squeeze(0)
+
+    asp = aspect_term.strip()
+    cs  = text.find(asp) if asp else -1
+    ce  = cs + len(asp) - 1 if cs >= 0 else -1
+
+    lcf = torch.zeros_like(input_ids, dtype=torch.float32)
+    if cs >= 0:
+        for k in range(input_ids.size(0)):
+            if not attention_mask[k]: continue
+            if token_type_ids[k]: continue
+            ts, te = int(offsets[k, 0]), int(offsets[k, 1])
+            if ts == 0 and te == 0: continue
+            if te > cs and ts <= ce:
+                lcf[k] = 1.0
+    if lcf.sum() == 0:
+        lcf = token_type_ids.float()
+
+    return {"input_ids": input_ids, "attention_mask": attention_mask, "lcf_vec": lcf}
+
+
+# ─── Load one joint model ─────────────────────────────────────────────────────
+
+def load_joint_model(
+    run_dir: Path,
+    tokenizer,
+) -> Tuple[nn.Module, Dict, List[str]]:
+    """Load best_model.pt + meta.json from a run directory."""
+    meta_path  = run_dir / "meta.json"
+    ckpt_path  = run_dir / "best_model.pt"
+    if not meta_path.is_file() or not ckpt_path.is_file():
+        raise FileNotFoundError(run_dir)
+
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    cfg  = meta["config"]
+    cat_labels: List[str] = meta["category_labels"]
+    num_cat = len(cat_labels)
+    cat_map = {lbl: i for i, lbl in enumerate(cat_labels)}
+
+    bert  = AutoModel.from_pretrained(PRETRAINED)
+    model = FastLcfBertMultiTask(
+        bert=bert,
+        num_sentiment=len(SENTIMENT_LABELS),
+        num_aspect_cat=num_cat,
+        use_lcf=cfg.get("use_lcf", True),
+        use_cdm=cfg.get("use_cdm", True),
+        use_tome=cfg.get("use_tome", False),
+        tome_resize=cfg.get("tome_resize", True),
+        tome_merge_strategy=cfg.get("merge_strategy", "bipartite"),
+        use_pre_tome=cfg.get("use_pre_tome", False),
+        pre_tome_merge_steps=cfg.get("pre_tome_merge_steps", _DEFAULT_CFG["pre_tome_merge_steps"]),
+        pre_tome_merge_strategy=cfg.get("merge_strategy", "bipartite"),
+        pre_tome_resize=cfg.get("tome_resize", True),
+        dropout=_DEFAULT_CFG["dropout"],
+        num_heads=_DEFAULT_CFG["num_heads"],
+        tome_merge_steps=_DEFAULT_CFG["tome_merge_steps"],
+        srd_threshold=_DEFAULT_CFG["srd_threshold"],
+    )
+    state = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+    model.load_state_dict(state)
+    model.to(DEVICE).eval()
+    return model, cat_map, cat_labels
+
+
+# ─── Run inference on ATE predictions for one config ─────────────────────────
+
+def predict_triplets(
+    model: nn.Module,
+    tokenizer,
+    ate_preds: Dict[str, List[str]],
+    cat_map: Dict[str, int],
+    cat_labels: List[str],
+) -> Dict[str, Set[Tuple[str, str, str]]]:
+    """Return {sentence: {(term, cat, sent), ...}} from joint model predictions."""
+    id2cat   = {i: lbl for lbl, i in cat_map.items()}
+    results: Dict[str, Set[Tuple[str, str, str]]] = {}
+
+    sentences = list(ate_preds.keys())
+    # Flatten to (sentence_idx, term) pairs for batching
+    flat: List[Tuple[int, str]] = []
+    for si, sent in enumerate(sentences):
+        for term in ate_preds[sent]:
+            flat.append((si, term))
+
+    pred_cat_all:  List[int] = []
+    pred_sent_all: List[int] = []
+
+    for start in range(0, len(flat), BATCH_SIZE):
+        chunk = flat[start : start + BATCH_SIZE]
+        samples = [
+            tokenize_single(sentences[si], term, tokenizer, MAX_SEQ_LEN)
+            for si, term in chunk
+        ]
+        ids  = torch.stack([s["input_ids"]     for s in samples]).to(DEVICE)
+        attn = torch.stack([s["attention_mask"] for s in samples]).to(DEVICE)
+        lcf  = torch.stack([s["lcf_vec"]        for s in samples]).to(DEVICE)
+
+        with torch.no_grad():
+            out = model(ids, attn, lcf)
+        pred_cat_all  += out["aspect_cat_logits"].argmax(-1).cpu().tolist()
+        pred_sent_all += out["sentiment_logits"].argmax(-1).cpu().tolist()
+
+    # Re-assemble per sentence
+    for si, sent in enumerate(sentences):
+        results[sent] = set()
+
+    ptr = 0
+    for si, sent in enumerate(sentences):
+        for term in ate_preds[sent]:
+            cp = pred_cat_all[ptr]
+            sp = pred_sent_all[ptr]
+            ptr += 1
+            results[sent].add((
+                term.strip().lower(),
+                id2cat[cp].upper(),
+                SENTIMENT_LABELS[sp].lower(),
+            ))
+
+    return results
+
+
+# ─── Micro P/R/F1 over all sentences ─────────────────────────────────────────
+
+def micro_prf(
+    gold_by_sent:  Dict[str, Set[Tuple]],
+    pred_by_sent:  Dict[str, Set[Tuple]],
+    all_sentences: List[str],
+) -> Dict[str, float]:
+    total_tp = total_fp = total_fn = 0
+    for sent in all_sentences:
+        gold = gold_by_sent.get(sent, set())
+        pred = pred_by_sent.get(sent, set())
+        tp = len(gold & pred)
+        total_tp += tp
+        total_fp += len(pred) - tp
+        total_fn += len(gold) - tp
+
+    p  = total_tp / max(total_tp + total_fp, 1)
+    r  = total_tp / max(total_tp + total_fn, 1)
+    f1 = 2 * p * r / max(p + r, 1e-9)
+    return {
+        "tp": total_tp, "fp": total_fp, "fn": total_fn,
+        "precision": round(p * 100, 2),
+        "recall":    round(r * 100, 2),
+        "f1":        round(f1 * 100, 2),
+    }
+
+
+# ─── ATE-only metrics (term extraction, ignore cat+sent) ─────────────────────
+
+def ate_metrics(
+    gold_by_sent:  Dict[str, Set[Tuple]],
+    ate_preds:     Dict[str, List[str]],
+    all_sentences: List[str],
+) -> Dict[str, float]:
+    total_tp = total_fp = total_fn = 0
+    for sent in all_sentences:
+        gold_terms = {t for t, _, _ in gold_by_sent.get(sent, set())}
+        pred_terms = {t.strip().lower() for t in ate_preds.get(sent, [])}
+        tp = len(gold_terms & pred_terms)
+        total_tp += tp
+        total_fp += len(pred_terms) - tp
+        total_fn += len(gold_terms) - tp
+    p  = total_tp / max(total_tp + total_fp, 1)
+    r  = total_tp / max(total_tp + total_fn, 1)
+    f1 = 2 * p * r / max(p + r, 1e-9)
+    return {"precision": round(p*100,2), "recall": round(r*100,2), "f1": round(f1*100,2)}
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    print(f"Device : {DEVICE}")
+    print(f"Loading gold triplets from {TEST_APC} …")
+    gold_by_sent = load_gold_triplets(TEST_APC)
+    all_sentences = list(gold_by_sent.keys())
+    print(f"  {len(all_sentences)} unique sentences, "
+          f"{sum(len(v) for v in gold_by_sent.values())} gold triplets")
+
+    print(f"Loading ATE predictions from {ATE_CSV} …")
+    ate_preds = load_ate_predictions(ATE_CSV)
+    print(f"  {sum(len(v) for v in ate_preds.values())} predicted terms "
+          f"across {len(ate_preds)} sentences")
+
+    # ATE-only baseline
+    ate_m = ate_metrics(gold_by_sent, ate_preds, all_sentences)
+    print(f"\nATE (term only): P={ate_m['precision']}%  R={ate_m['recall']}%  "
+          f"F1={ate_m['f1']}%")
+
+    # Discover configs
+    run_dirs = sorted(
+        d for d in RUNS_DIR.iterdir()
+        if d.is_dir() and (d / "best_model.pt").is_file() and (d / "meta.json").is_file()
+    )
+    if not run_dirs:
+        print(f"\nNo trained configs found in {RUNS_DIR}")
+        return
+
+    print(f"\nFound {len(run_dirs)} config(s): {[d.name for d in run_dirs]}")
+    print(f"Loading tokenizer: {PRETRAINED}")
+    tokenizer = AutoTokenizer.from_pretrained(PRETRAINED)
+
+    rows: List[Dict] = []
+
+    for run_dir in run_dirs:
+        config_name = run_dir.name
+        print(f"\n── Config: {config_name} ──")
+        try:
+            model, cat_map, cat_labels = load_joint_model(run_dir, tokenizer)
+        except Exception as e:
+            print(f"  [error] {e}")
+            continue
+
+        print(f"  Running inference on {sum(len(v) for v in ate_preds.values())} terms …")
+        pred_by_sent = predict_triplets(model, tokenizer, ate_preds, cat_map, cat_labels)
+
+        m = micro_prf(gold_by_sent, pred_by_sent, all_sentences)
+        print(f"  Joint triplet → P={m['precision']}%  R={m['recall']}%  F1={m['f1']}%"
+              f"  (TP={m['tp']} FP={m['fp']} FN={m['fn']})")
+
+        rows.append({
+            "config":            config_name,
+            "ate_f1":            ate_m["f1"],
+            "ate_precision":     ate_m["precision"],
+            "ate_recall":        ate_m["recall"],
+            "joint_precision":   m["precision"],
+            "joint_recall":      m["recall"],
+            "joint_f1":          m["f1"],
+            "tp":                m["tp"],
+            "fp":                m["fp"],
+            "fn":                m["fn"],
+        })
+
+        del model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    # ── Summary table ──────────────────────────────────────────────────────────
+    W = 92
+    print(f"\n{'═' * W}")
+    print("JOINT TRIPLET EVALUATION  (term ∩ category ∩ sentiment — ALL 3 phải đúng)")
+    print(f"{'═' * W}")
+    print(f"  {'Config':<26}  {'ATE-F1':>8}  {'Joint-P':>8}  {'Joint-R':>8}  {'Joint-F1':>9}"
+          f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
+    print(f"{'─' * W}")
+    for row in rows:
+        print(
+            f"  {row['config']:<26}  {row['ate_f1']:>7.2f}%"
+            f"  {row['joint_precision']:>7.2f}%"
+            f"  {row['joint_recall']:>7.2f}%"
+            f"  {row['joint_f1']:>8.2f}%"
+            f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
+        )
+    print(f"{'═' * W}")
+    print("  ATE-F1   : F1 của step trích xuất aspect term (T5)")
+    print("  Joint-F1 : micro F1 khi cả 3 label (term, category, sentiment) đều đúng")
+    print(f"{'═' * W}")
+
+    # ── Save CSV ───────────────────────────────────────────────────────────────
+    with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["config", "ate_f1", "ate_precision", "ate_recall",
+                        "joint_precision", "joint_recall", "joint_f1", "tp", "fp", "fn"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"\nSaved → {OUT_CSV}")
+
+
+if __name__ == "__main__":
+    main()

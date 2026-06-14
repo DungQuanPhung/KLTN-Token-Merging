@@ -377,3 +377,22 @@ curl -X POST http://localhost:5000/batch_predict -F file=@sentences.txt
 Ghi chú: backend sẽ load mô hình khi khởi động — việc này có thể mất vài phút nếu lần đầu tải trọng số lớn.
 
 ---
+
+
+Bước 1 — Trích xuất aspect terms (ATE):
+python experiments/run_ate_inference.py
+→ Tạo runs_ate/test_ate_predictions.csv
+
+Bước 2 — Tính joint triplet F1:
+python experiments/eval_joint_triplet.py
+→ Đọc runs_ate/test_ate_predictions.csv + load các model từ runs_joint/*/best_model.pt → in bảng + lưu runs_ate/eval_joint_triplet.csv
+
+---
+Nếu đang dùng terminal trong VS Code, chắc chắn đang đứng đúng thư mục:
+cd "C:\Users\NGUYEN HO TUYEN\Downloads\kltn\thesis_apc_baseline"
+python experiments/run_ate_inference.py
+python experiments/eval_joint_triplet.py
+
+Hoặc dùng ! prefix trong Claude Code:
+! python experiments/run_ate_inference.py
+! python experiments/eval_joint_triplet.py
