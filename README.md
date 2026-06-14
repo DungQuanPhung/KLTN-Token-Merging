@@ -316,12 +316,14 @@ pip install fastapi uvicorn python-docx
 > Lưu ý: khi copy vào terminal **không** kèm phần chú thích trên cùng dòng. Ví dụ: `set CLAUSE_SPLIT_MODE=uos  # comment` sẽ lưu cả phần `# comment` vào biến và gây lỗi.
 
 ```bash
-# Windows (cmd)rulebase
+# Windows (cmd)uos
 set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best
 set APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize
 set BERT_NAME=bert-base-uncased
-set CLAUSE_SPLIT_MODE=uos
+set CLAUSE_SPLIT_MODE=rulebase
 uvicorn server.app:app --host 0.0.0.0 --port 5000
+
+set CLAUSE_SPLIT_MODE=rulebase && uvicorn server.app:app --host 0.0.0.0 --port 5000
 ```
 
 

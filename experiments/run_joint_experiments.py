@@ -114,7 +114,7 @@ PRE_TOME_MERGE_STEPS = 1   # Conservative: 1 merge step before BERT encoder
 #   "rulebase"  — regex split on comma / semicolon / adversative conjunctions
 #                 (but, yet, however, although, though, whereas); fast, no GPU
 #   "uos"       — LLM-based UOS segmenter via Ollama (requires ollama serve)
-CLAUSE_SPLIT_MODE = "rulebase"
+CLAUSE_SPLIT_MODE = "none"
 
 # Set True to mix supplement TSV data into sentiment-head training (recommended).
 # Set False to train on main .apc data only.

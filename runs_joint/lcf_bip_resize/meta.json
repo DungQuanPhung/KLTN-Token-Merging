@@ -21,6 +21,6 @@
     "use_tome": true,
     "tome_resize": true,
     "merge_strategy": "bipartite",
-    "clause_split": true
+    "clause_split_mode": "none"
   }
 }
