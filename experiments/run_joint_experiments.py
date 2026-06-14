@@ -231,6 +231,126 @@ def compute_category_class_weights(
 
 
 
+# ─── ATE-based inference helpers ─────────────────────────────────────────────
+
+def tokenize_single(
+    text: str,
+    aspect_term: str,
+    tokenizer,
+    max_seq_len: int = 128,
+) -> Dict[str, torch.Tensor]:
+    """Tokenize one (sentence, aspect_term) pair — same format as ApcFileDataset.
+
+    Returns dict with input_ids, attention_mask, lcf_vec (all 1-D tensors).
+    """
+    pad_or_unk = tokenizer.pad_token or tokenizer.unk_token or "[PAD]"
+    aspect = aspect_term.strip() or pad_or_unk
+
+    enc = tokenizer(
+        text,
+        aspect,
+        max_length=max_seq_len,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt",
+        return_offsets_mapping=True,
+    )
+    input_ids      = enc["input_ids"].squeeze(0)
+    attention_mask = enc["attention_mask"].squeeze(0)
+    token_type_ids = enc.get("token_type_ids", torch.zeros_like(input_ids)).squeeze(0)
+    offsets        = enc["offset_mapping"].squeeze(0)
+
+    asp_stripped  = aspect_term.strip()
+    asp_cs = text.find(asp_stripped) if asp_stripped else -1
+    asp_ce = asp_cs + len(asp_stripped) - 1 if asp_cs >= 0 else -1
+
+    lcf_vec = torch.zeros_like(input_ids, dtype=torch.float32)
+    if asp_cs >= 0:
+        for k in range(input_ids.size(0)):
+            if attention_mask[k].item() == 0:
+                continue
+            if token_type_ids[k].item() != 0:
+                continue
+            tok_s = int(offsets[k, 0].item())
+            tok_e = int(offsets[k, 1].item())
+            if tok_s == 0 and tok_e == 0:
+                continue
+            if tok_e > asp_cs and tok_s <= asp_ce:
+                lcf_vec[k] = 1.0
+    if lcf_vec.sum().item() == 0:
+        lcf_vec = token_type_ids.float()
+
+    return {"input_ids": input_ids, "attention_mask": attention_mask, "lcf_vec": lcf_vec}
+
+
+def predict_from_ate_csv(
+    model: nn.Module,
+    tokenizer,
+    ate_csv_path: Path,
+    aspect_cat_map: Dict[str, int],
+    out_path: Path,
+    max_seq_len: int = 128,
+    batch_size: int = 32,
+) -> None:
+    """Run joint model inference on ATE-predicted terms and save to CSV.
+
+    Reads runs_ate/test_ate_predictions.csv (sentence, predicted_term, gold_terms),
+    predicts category + sentiment for each row, writes to out_path.
+
+    Output columns: sentence, predicted_term, predicted_category,
+                    predicted_sentiment, gold_terms
+    """
+    if not ate_csv_path.is_file():
+        print(f"  [skip] ATE CSV not found: {ate_csv_path}")
+        return
+
+    id2cat = {v: k for k, v in aspect_cat_map.items()}
+
+    with open(ate_csv_path, newline="", encoding="utf-8") as f:
+        rows_in = list(csv.DictReader(f))
+
+    model.eval()
+    rows_out: List[Dict[str, str]] = []
+
+    for start in range(0, len(rows_in), batch_size):
+        chunk = rows_in[start : start + batch_size]
+
+        samples = [
+            tokenize_single(r["sentence"], r["predicted_term"], tokenizer, max_seq_len)
+            for r in chunk
+        ]
+
+        ids  = torch.stack([s["input_ids"]      for s in samples]).to(DEVICE)
+        attn = torch.stack([s["attention_mask"]  for s in samples]).to(DEVICE)
+        lcf  = torch.stack([s["lcf_vec"]         for s in samples]).to(DEVICE)
+
+        with torch.no_grad():
+            out = model(ids, attn, lcf)
+
+        sent_preds = out["sentiment_logits"].argmax(-1).cpu().tolist()
+        cat_preds  = out["aspect_cat_logits"].argmax(-1).cpu().tolist()
+
+        for row, sp, cp in zip(chunk, sent_preds, cat_preds):
+            rows_out.append({
+                "sentence":             row["sentence"],
+                "predicted_term":       row["predicted_term"],
+                "predicted_category":   id2cat.get(cp, str(cp)),
+                "predicted_sentiment":  SENTIMENT_LABELS[sp],
+                "gold_terms":           row.get("gold_terms", ""),
+            })
+
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["sentence", "predicted_term",
+                        "predicted_category", "predicted_sentiment", "gold_terms"],
+        )
+        writer.writeheader()
+        writer.writerows(rows_out)
+
+    print(f"  ATE-based predictions → {out_path}  ({len(rows_out)} rows)")
+
+
 # ─── Predictions CSV ──────────────────────────────────────────────────────────
 
 def save_predictions_csv(
@@ -353,6 +473,7 @@ def train_joint(
     num_sentiment:    int,
     num_aspect_cat:   int,
     aspect_cat_map:   Dict[str, int],
+    tokenizer=None,
 ) -> Dict:
     """Train both heads jointly.
 
@@ -505,6 +626,16 @@ def train_joint(
         cat_pred=test_m["cat_pred"],
         cat_id2label=aspect_cat_map,
         out_path=ckpt_dir / "test_predictions.csv",
+    )
+
+    # ── Inference on ATE-predicted terms (end-to-end pipeline) ───────────────
+    predict_from_ate_csv(
+        model=model,
+        tokenizer=tokenizer,
+        ate_csv_path=RUNS_DIR.parent / "runs_ate" / "test_ate_predictions.csv",
+        aspect_cat_map=aspect_cat_map,
+        out_path=ckpt_dir / "test_predictions_from_ate.csv",
+        max_seq_len=MAX_SEQ_LEN,
     )
 
     # ── Per-class F1 ─────────────────────────────────────────────────────────
@@ -773,6 +904,7 @@ def main() -> None:
             num_sentiment=len(sentiment_map),
             num_aspect_cat=len(aspect_cat_map),
             aspect_cat_map=aspect_cat_map,
+            tokenizer=tokenizer,
         )
         r["label"]            = label
         r["use_lcf"]          = use_lcf
