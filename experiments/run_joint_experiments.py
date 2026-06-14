@@ -710,10 +710,13 @@ def train_joint(
         **{f"cat_f1_{cat_labels_order[i]}": round(float(cat_f1_per[i]), 2)
            for i in range(len(cat_labels_order))},
         # Joint: both sentiment AND category correct simultaneously
-        "joint_f1":        test_m["joint_f1"],
-        "joint_precision": test_m["joint_precision"],
-        "joint_recall":    test_m["joint_recall"],
-        "joint_acc":       test_m["joint_acc"],
+        "joint_f1":               test_m["joint_f1"],
+        "joint_precision":        test_m["joint_precision"],
+        "joint_recall":           test_m["joint_recall"],
+        "joint_acc":              test_m["joint_acc"],
+        "joint_f1_macro":         test_m["joint_f1_macro"],
+        "joint_precision_macro":  test_m.get("joint_precision_macro", 0),
+        "joint_recall_macro":     test_m.get("joint_recall_macro", 0),
         # Per-category × per-sentiment F1
         **cat_sent_f1,
     }
