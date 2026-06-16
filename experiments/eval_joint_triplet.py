@@ -75,6 +75,13 @@ _DEFAULT_CFG = dict(
     tome_merge_steps=2, pre_tome_merge_steps=1,
 )
 
+# ─── Term normalisation ───────────────────────────────────────────────────────
+
+def _norm_term(t: str) -> str:
+    """Lowercase + strip whitespace and leading/trailing '.' ',' from a term."""
+    return t.strip(" \t\n\r.,").lower()
+
+
 # ─── Gold triplets ────────────────────────────────────────────────────────────
 
 def load_gold_triplets(
@@ -85,7 +92,7 @@ def load_gold_triplets(
     for s in parse_apc_file(str(apc_path)):
         key = s["text"]
         triple = (
-            s["aspect_term"].strip().lower(),
+            _norm_term(s["aspect_term"]),
             s["aspect_category"].strip().upper(),
             s["sentiment"].strip().lower(),
         )
@@ -245,7 +252,7 @@ def predict_triplets(
             sp = pred_sent_all[ptr]
             ptr += 1
             results[sent].add((
-                term.strip().lower(),
+                _norm_term(term),
                 id2cat[cp].upper(),
                 SENTIMENT_LABELS[sp].lower(),
             ))
@@ -350,7 +357,7 @@ def ate_metrics(
     total_tp = total_fp = total_fn = 0
     for sent in all_sentences:
         gold_terms = {t for t, _, _ in gold_by_sent.get(sent, set())}
-        pred_terms = {t.strip().lower() for t in ate_preds.get(sent, [])}
+        pred_terms = {_norm_term(t) for t in ate_preds.get(sent, [])}
         tp = len(gold_terms & pred_terms)
         total_tp += tp
         total_fp += len(pred_terms) - tp
