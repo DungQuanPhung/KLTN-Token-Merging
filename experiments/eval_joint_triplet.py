@@ -34,7 +34,7 @@ if str(ROOT) not in sys.path:
 
 import torch
 import torch.nn as nn
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, T5EncoderModel, AutoTokenizer
 
 from dataset_utils import parse_apc_file, SENTIMENT_LABELS
 from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
@@ -47,9 +47,27 @@ ATE_CSV      = ROOT / "runs_ate" / "test_ate_predictions.csv"
 RUNS_DIR     = ROOT / "runs_joint"
 OUT_CSV      = ROOT / "runs_ate" / "eval_joint_triplet.csv"
 
-PRETRAINED   = "bert-base-uncased"
+# ─── Model selection ──────────────────────────────────────────────────────────
+# Change MODEL_TYPE to switch between encoders (must match run_joint_experiments.py).
+MODEL_TYPE = "t5"   # "bert" | "t5"
+
+_MODEL_CONFIGS = {
+    # "bert": "bert-base-uncased",
+    "t5":   "t5-base",
+}
+if MODEL_TYPE not in _MODEL_CONFIGS:
+    raise ValueError(f"Unknown MODEL_TYPE={MODEL_TYPE!r}. Choose from: {list(_MODEL_CONFIGS)}")
+
+PRETRAINED   = _MODEL_CONFIGS[MODEL_TYPE]
 MAX_SEQ_LEN  = 128
 BATCH_SIZE   = 32
+
+
+def _load_encoder(model_type: str, pretrained: str):
+    """Load the correct HuggingFace encoder for the given model_type."""
+    if model_type == "t5":
+        return T5EncoderModel.from_pretrained(pretrained)
+    return AutoModel.from_pretrained(pretrained)
 
 # Defaults matching run_joint_experiments.py
 _DEFAULT_CFG = dict(
@@ -153,7 +171,7 @@ def load_joint_model(
 
     train_time_sec: float = meta.get("train_time_sec", float("nan"))
 
-    bert  = AutoModel.from_pretrained(PRETRAINED)
+    bert  = _load_encoder(MODEL_TYPE, PRETRAINED)
     model = FastLcfBertMultiTask(
         bert=bert,
         num_sentiment=len(SENTIMENT_LABELS),
