@@ -1,0 +1,157 @@
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+EXPERIMENT SUMMARY — Joint training (Sent: main+supp | Cat: main only)
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Seed: 42  MaxEpochs: 15  Patience: 4  Batch: 16  LR: 2e-05  Device: cuda  UseSupp: True  UseWeights: True
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Configuration               LCF PreToMe Strategy         Resize  Time(s)  BestEp   Sent-F1   Cat-F1  Micro-F1  Macro-F1  Joint-P  Joint-R  SentAcc   CatAcc
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       N —                     —    328.1       7    95.51%   89.42%    85.90%    62.21%   85.90%   85.90%    95.51%    89.42%
+  LCF only CDM                  Y       N —                     —    456.3      12    95.83%   90.06%    86.22%    64.26%   86.22%   86.22%    95.83%    90.06%
+  LCF only CDW                  Y       N —                     —    336.2       7    96.79%   88.78%    86.22%    62.25%   86.22%   86.22%    96.79%    88.78%
+  LCF+Bip CDM (resize)          Y       N bipartite           yes    678.0      12    95.83%   89.42%    85.90%    69.43%   85.90%   85.90%    95.83%    89.42%
+  LCF+Bip CDW (resize)          Y       N bipartite           yes    680.1      12    96.15%   91.03%    87.82%    72.57%   87.82%   87.82%    96.15%    91.03%
+  Bip (resize)                  N       N bipartite           yes    661.6      13    96.47%   91.03%    87.50%    62.56%   87.50%   87.50%    96.47%    91.03%
+  LCF+Seq CDM (resize)          Y       N sequential_local    yes    657.0       7    94.87%   87.82%    83.65%    67.94%   83.65%   83.65%    94.87%    87.82%
+  LCF+Seq CDW (resize)          Y       N sequential_local    yes    896.1      11    95.51%   88.78%    85.26%    62.13%   85.26%   85.26%    95.51%    88.78%
+  Seq (resize)                  N       N sequential_local    yes    644.5       7    96.47%   89.42%    86.54%    63.53%   86.54%   86.54%    96.47%    89.42%
+  LCF+Attn CDM (resize)         Y       N attention_weighted    yes    657.7       7    95.19%   87.82%    84.62%    69.49%   84.62%   84.62%    95.19%    87.82%
+  LCF+Attn CDW (resize)         Y       N attention_weighted    yes    895.6      14    94.87%   89.74%    85.26%    65.75%   85.26%   85.26%    94.87%    89.74%
+  Attn (resize)                 N       N attention_weighted    yes    876.5      11    95.83%   89.74%    86.86%    63.31%   86.86%   86.86%    95.83%    89.74%
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       97.70%       79.17%       54.55%
+  LCF only CDM                  Y       97.89%       79.07%       54.55%
+  LCF only CDW                  Y       98.41%       85.11%       60.00%
+  LCF+Bip CDM (resize)          Y       97.89%       77.27%       60.00%
+  LCF+Bip CDW (resize)          Y       98.06%       84.44%       50.00%
+  Bip (resize)                  N       98.25%       81.82%       60.00%
+  LCF+Seq CDM (resize)          Y       97.35%       78.26%       46.15%
+  LCF+Seq CDW (resize)          Y       97.72%       79.07%       50.00%
+  Seq (resize)                  N       98.24%       82.61%       60.00%
+  LCF+Attn CDM (resize)         Y       97.52%       82.61%       42.86%
+  LCF+Attn CDW (resize)         Y       97.35%       77.27%       46.15%
+  Attn (resize)                 N       97.90%       76.19%       60.00%
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Configuration               LCF F1-AMENITY F1-BRANDIN F1-EXPERIE F1-FACILIT F1-LOYALTY F1-SERVICE
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N     88.44%     72.73%     77.42%     90.55%     83.33%     95.56%
+  LCF only CDM                  Y     89.47%     72.00%     84.38%     89.45%     92.31%     95.91%
+  LCF only CDW                  Y     87.84%     72.73%     77.19%     88.56%     92.31%     95.08%
+  LCF+Bip CDM (resize)          Y     89.03%     70.00%     78.69%     89.34%     92.31%     95.51%
+  LCF+Bip CDW (resize)          Y     90.79%     70.00%     82.54%     90.91%     92.31%     96.63%
+  Bip (resize)                  N     90.28%     63.16%     84.06%     91.54%     83.33%     97.21%
+  LCF+Seq CDM (resize)          Y     87.25%     69.23%     74.07%     88.67%     83.33%     94.44%
+  LCF+Seq CDW (resize)          Y     87.67%     60.00%     80.65%     88.78%     76.92%     96.63%
+  Seq (resize)                  N     87.25%     75.00%     80.70%     88.67%     83.33%     97.21%
+  LCF+Attn CDM (resize)         Y     84.93%     78.26%     74.07%     86.54%     92.31%     96.67%
+  LCF+Attn CDW (resize)         Y     87.07%     70.00%     86.15%     87.68%     83.33%     98.31%
+  Attn (resize)                 N     88.11%     66.67%     83.58%     89.22%     76.92%     97.21%
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Per-Category × Sentiment F1-micro  (sentiment F1 restricted to samples of each category)
+
+  Category: AMENITY
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+  ─────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       98.44%       87.50%      100.00%
+  LCF only CDM                  Y       96.92%       71.43%      100.00%
+  LCF only CDW                  Y       99.21%       94.12%      100.00%
+  LCF+Bip CDM (resize)          Y       96.92%       71.43%      100.00%
+  LCF+Bip CDW (resize)          Y       97.67%       80.00%      100.00%
+  Bip (resize)                  N       98.44%       87.50%      100.00%
+  LCF+Seq CDM (resize)          Y       96.12%       66.67%      100.00%
+  LCF+Seq CDW (resize)          Y       96.92%       71.43%      100.00%
+  Seq (resize)                  N       98.44%       87.50%      100.00%
+  LCF+Attn CDM (resize)         Y       97.67%       80.00%      100.00%
+  LCF+Attn CDW (resize)         Y       95.31%       71.43%       75.00%
+  Attn (resize)                 N       96.92%       71.43%      100.00%
+
+  Category: BRANDING
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+  ─────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       95.24%        0.00%        0.00%
+  LCF only CDM                  Y       90.00%        0.00%        0.00%
+  LCF only CDW                  Y       95.24%        0.00%        0.00%
+  LCF+Bip CDM (resize)          Y       95.24%        0.00%        0.00%
+  LCF+Bip CDW (resize)          Y       95.24%        0.00%        0.00%
+  Bip (resize)                  N       95.24%        0.00%        0.00%
+  LCF+Seq CDM (resize)          Y       90.00%        0.00%        0.00%
+  LCF+Seq CDW (resize)          Y       95.24%        0.00%        0.00%
+  Seq (resize)                  N       95.24%        0.00%        0.00%
+  LCF+Attn CDM (resize)         Y       84.21%        0.00%        0.00%
+  LCF+Attn CDW (resize)         Y       90.00%        0.00%        0.00%
+  Attn (resize)                 N       95.24%        0.00%        0.00%
+
+  Category: EXPERIENCE
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+  ─────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       98.46%        0.00%        0.00%
+  LCF only CDM                  Y       98.46%        0.00%        0.00%
+  LCF only CDW                  Y       98.46%        0.00%        0.00%
+  LCF+Bip CDM (resize)          Y      100.00%      100.00%        0.00%
+  LCF+Bip CDW (resize)          Y       98.41%      100.00%        0.00%
+  Bip (resize)                  N       98.46%        0.00%        0.00%
+  LCF+Seq CDM (resize)          Y       98.41%      100.00%        0.00%
+  LCF+Seq CDW (resize)          Y       96.88%        0.00%        0.00%
+  Seq (resize)                  N       98.46%        0.00%        0.00%
+  LCF+Attn CDM (resize)         Y       98.41%      100.00%        0.00%
+  LCF+Attn CDW (resize)         Y      100.00%      100.00%        0.00%
+  Attn (resize)                 N       98.46%        0.00%        0.00%
+
+  Category: FACILITY
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+  ─────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       95.86%       75.00%        0.00%
+  LCF only CDM                  Y       97.08%       81.82%        0.00%
+  LCF only CDW                  Y       97.08%       81.82%        0.00%
+  LCF+Bip CDM (resize)          Y       96.51%       76.19%        0.00%
+  LCF+Bip CDW (resize)          Y       97.08%       85.71%        0.00%
+  Bip (resize)                  N       97.11%       80.00%        0.00%
+  LCF+Seq CDM (resize)          Y       96.47%       81.82%        0.00%
+  LCF+Seq CDW (resize)          Y       97.08%       85.71%        0.00%
+  Seq (resize)                  N       97.08%       81.82%        0.00%
+  LCF+Attn CDM (resize)         Y       96.47%       81.82%        0.00%
+  LCF+Attn CDW (resize)         Y       96.51%       76.19%        0.00%
+  Attn (resize)                 N       97.11%       80.00%        0.00%
+
+  Category: LOYALTY
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+  ─────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       92.31%        0.00%        0.00%
+  LCF only CDM                  Y      100.00%        0.00%        0.00%
+  LCF only CDW                  Y      100.00%        0.00%        0.00%
+  LCF+Bip CDM (resize)          Y      100.00%        0.00%        0.00%
+  LCF+Bip CDW (resize)          Y      100.00%        0.00%        0.00%
+  Bip (resize)                  N      100.00%        0.00%        0.00%
+  LCF+Seq CDM (resize)          Y      100.00%        0.00%        0.00%
+  LCF+Seq CDW (resize)          Y      100.00%        0.00%        0.00%
+  Seq (resize)                  N      100.00%        0.00%        0.00%
+  LCF+Attn CDM (resize)         Y      100.00%        0.00%        0.00%
+  LCF+Attn CDW (resize)         Y      100.00%        0.00%        0.00%
+  Attn (resize)                 N      100.00%        0.00%        0.00%
+
+  Category: SERVICE
+  Configuration               LCF  F1-positive  F1-negative   F1-neutral
+  ─────────────────────────────────────────────────────────────────────────
+  Baseline (Balanced)           N       99.41%       85.71%        0.00%
+  LCF only CDM                  Y      100.00%      100.00%        0.00%
+  LCF only CDW                  Y       99.41%       85.71%        0.00%
+  LCF+Bip CDM (resize)          Y       99.41%       85.71%        0.00%
+  LCF+Bip CDW (resize)          Y       99.41%       85.71%        0.00%
+  Bip (resize)                  N       99.41%       85.71%        0.00%
+  LCF+Seq CDM (resize)          Y       99.41%       85.71%        0.00%
+  LCF+Seq CDW (resize)          Y       99.41%       85.71%        0.00%
+  Seq (resize)                  N       99.41%       85.71%        0.00%
+  LCF+Attn CDM (resize)         Y       99.41%       85.71%        0.00%
+  LCF+Attn CDW (resize)         Y       99.41%       85.71%        0.00%
+  Attn (resize)                 N       99.41%       85.71%        0.00%
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  Sent training : main .apc + supplement (negative.tsv + neutral.tsv)
+  Cat  training : main .apc only — supplement masked out via is_supplement
+  bipartite → ToMe CVPR 2023 | sequential_local → new neighbour merge
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+

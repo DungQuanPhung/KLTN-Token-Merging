@@ -1,0 +1,313 @@
+id,sentence,aspect_term,category,sentiment
+1,"they upgraded us to a beautiful suite without us even asking",they,SERVICE,Positive
+2,"Check in: Staff are friendly, welcoming and smile brightly. We were greeted warmly and check-in was quick despite a few minor problems. We received serve juice, fruit and cold towels upon check-in. Very suitable after a tiring flight",serve,SERVICE,Positive
+3,"Miss Dieu served water enthusiastically and very thoughtfully led us to the room",Miss Dieu,SERVICE,Positive
+4,"staff is wonderfully fun",staff,SERVICE,Positive
+5,"Overall, the quality of the restaurant, service , rooms as well as the staff all bring a great feeling, well worth the experience.",service,SERVICE,Positive
+6,"Exceptional staff and customer service",staff and customer service,SERVICE,Positive
+7,"Overall, the quality of the restaurant, service, rooms as well as staff all bring a great feeling, well worth the experience.",staff,SERVICE,Positive
+8,"Thank you very enthusiastic staff Hoang, Ngoc and you drive here",you drive,SERVICE,Positive
+9,"The service staff is very attentive and conscientious",conscientious,SERVICE,Positive
+10,"Best of all is the incredible staff—every single person we met was warm, gracious and could not do enough to make our trip memorable",person,SERVICE,Positive
+11,"staff is friendly and enthusiastic",staff,SERVICE,Positive
+12,"staff and everything was great as always",staff,SERVICE,Positive
+13,"Thank you Vinpearl's service for bringing wonderful moments of rest, and I will bring my family back here many more times.",service,SERVICE,Positive
+14,"The restaurant is spacious, the view is beautiful, staff is friendly and the food is amazing",staff,SERVICE,Positive
+15,"xe takes you to your door, enthusiastic driver, cute cheese sticks",xe,SERVICE,Positive
+16,"Khanh provides excellent services in providing tips for our Hanoi trip",Khanh,SERVICE,Positive
+17,"Vinh baggage assistance enthusiastically",baggage assistance,SERVICE,Positive
+18,"Especially Hong NVCSKH is very enthusiastic and thoughtful in assisting guests with check-in",Hong NVCSKH,SERVICE,Positive
+19,"staff is extremely enthusiastic and cute, and has reasonable breakfast",staff,SERVICE,Positive
+20,"receptionist friends Trang and Chieu are very friendly and enthusiastic",receptionist,SERVICE,Positive
+21,"staff people are very thoughtful and friendly",staff,SERVICE,Positive
+22,"Good room service . Cute and polite staff",room service,SERVICE,Positive
+23,"staff is friendly from the reception to the restaurant",staff,SERVICE,Positive
+24,"In general, service is very OK, no need to discuss",service,SERVICE,Positive
+25,"There are some very good compliments and thanks to Friend Diep Minh Sang on service attitude FB",service attitude,SERVICE,Positive
+26,"staff is extremely sweet and helpful, especially the receptionist",staff,SERVICE,Positive
+27,"all service are perfect",service,SERVICE,Positive
+28,"Friendly helpful staff",staff,SERVICE,Positive
+29,"Overall very pleased with the service - efficient, helpful & friendly staff",service,SERVICE,Positive
+30,"Thanh Phu's friend serves cheerfully",Thanh Phu's friend,SERVICE,Positive
+31,"Staff is very friendly and enthusiastic",Staff,SERVICE,Positive
+32,"All staff are very happy and enthusiastic",staff,SERVICE,Positive
+33,"Their service is so personalised and welcoming that you feel the staff really enjoys their jobs, it’s a team of good hardworking people",service,SERVICE,Positive
+34,"I got room upgrade for free, beautiful sea view",room upgrade,SERVICE,Positive
+35,"receptionist people are so lovely and take care of us every little bit",receptionist,SERVICE,Positive
+36,"Thank you Hanh and Yen's friends , you are very polite. Hospitable",Hanh and Yen's friends,SERVICE,Positive
+37,"The service s here are awesome",service,SERVICE,Positive
+38,"Check-in procedures were quick and staff guided you to the room very enthusiastically",staff,SERVICE,Positive
+39,"children serve is obedient and adorable",children serve,SERVICE,Positive
+40,"The staff here are very friendly, the lovely Giang friend helped me a lot from the time I checked in to the time I checked out.",Giang friend,SERVICE,Positive
+41,"Many staff s have impressive features, not only during working hours but after working hours, they also greet enthusiastically. I really admire Vinpearl's way of training employees.",staff,SERVICE,Positive
+42,"Good service, staff is friendly and attentive",staff,SERVICE,Positive
+43,"However, the swimming pool and service are very good, you spa is very enthusiastic",you,SERVICE,Positive
+44,"staff is always enthusiastic, welcoming, and calm",staff,SERVICE,Positive
+45,"service quality good, very professional",service quality,SERVICE,Positive
+46,"friendly staff, enthusiastic",friendly,SERVICE,Positive
+47,"Friendly and cheerful staff, with a friendly and enthusiastic staff baggage handler named Vinh",staff,SERVICE,Positive
+48,"staff people are very nice and enthusiastic",staff,SERVICE,Positive
+49,"Service quality is quite good, staff is friendly and professional",staff,SERVICE,Positive
+50,"Deserves to be one of the hotels with the best service in Da Nang",service,SERVICE,Positive
+51,"The food here is very diverse, serve is enthusiastic",serve,SERVICE,Positive
+52,"staff is friendly and enthusiastic, with receptionist Vy and Vinh providing very cheerful luggage support and enthusiastic guidance.",staff,SERVICE,Positive
+53,"Thanks to Lauro at restaurant",Lauro,SERVICE,Positive
+54,"staff is cheerful and enthusiastic",staff,SERVICE,Positive
+55,"Good service , friendly and attentive staff",service,SERVICE,Positive
+56,"Crowne Hotel is great, service quality is good, reasonable price",service quality,SERVICE,Positive
+57,"Honestly, we felt comfortable and safe in Hanoi because of all the help",the help,SERVICE,Positive
+58,"Clean room, friendly staff , quick response, flexible handling",staff,SERVICE,Positive
+59,"Good service, staff is cute and enthusiastic",staff,SERVICE,Positive
+60,"Thank you very much Mr. Technical department center for your enthusiastic and thoughtful support",Mr. Technical department center,SERVICE,Positive
+61,"If you want a place to relax with great staff and reasonable prices, Crowne Plaza is the place to be",staff,SERVICE,Positive
+62,"Service staff is enthusiastic and friendly",Service staff,SERVICE,Positive
+63,"I came to Phu Quoc for the first time and made a lucky choice to stay at the vinholiday fiesta hotel. Even though the hotel is 3*, the rooms and staff here are treated like 5*.",staff,SERVICE,Positive
+64,"There are many different types of service",service,SERVICE,Positive
+65,"staff is very enthusiastic and pleasant",staff,SERVICE,Positive
+66,"Staff serves quickly and professionally, with a smile on its face",Staff,SERVICE,Positive
+67,"Thank you Trang's friend for supporting the group a lot during our time here",Trang's friend,SERVICE,Positive
+68,"Ngoc friend in the lobby helped me a lot",Ngoc friend,SERVICE,Positive
+69,"Staff Thanh Huyen, Kim Lien, Chau dedicated",Staff,SERVICE,Positive
+70,"Staff is dedicated and cute",Staff,SERVICE,Positive
+71,"baggage staff is very enthusiastic and cheerful",baggage staff,SERVICE,Positive
+72,"staff is very enthusiastic and cute",staff,SERVICE,Positive
+73,"staff is fun, cute, and dedicated",staff,SERVICE,Positive
+74,"Friendly and sociable staff and good serve (Staff Thuy)",serve,SERVICE,Positive
+75,"However, the hotel equipment is a bit old, but in return, serve 's enthusiasm and friendly staff are ok.",serve,SERVICE,Positive
+76,"You staff is thoughtful and professional",You staff,SERVICE,Positive
+77,"staff is very enthusiastic",staff,SERVICE,Positive
+78,"10 points for the attitude and professionalism of the service staff",service,SERVICE,Positive
+79,"service is thoughtful, diverse, attentive, professional, friendly staff",service,SERVICE,Positive
+80,"The service is very ok",service,SERVICE,Positive
+81,"It was good because Khanh Le was so friendly",Khanh Le,SERVICE,Positive
+82,"shuttle bus is fast, on time",shuttle bus,SERVICE,Positive
+83,"They were soo friendly and helpful",They,SERVICE,Positive
+84,"Nice swimming pool..good service",service,SERVICE,Positive
+85,"service quality is good",service quality,SERVICE,Positive
+86,"Room is clean and wifi…",Room,FACILITY,Positive
+87,"First of all, it is located in the middle of Old Quarter so Hoan Kiem lake, night market, and especially beer street are in a walking distance",it,FACILITY,Positive
+88,"resort beautiful clean rooms with sea view and full services",resort,FACILITY,Positive
+89,"Modern interior clean room",interior,FACILITY,Positive
+90,"the landscap is very nice, green, and clean",landscap,FACILITY,Positive
+91,"Large Villa room with beautiful garden design",garden design,FACILITY,Positive
+92,"room is luxurious, has a swimming pool, and delicious breakfast",room,FACILITY,Positive
+93,"New hotel, room is clean, bed is very soft and comfortable",room,FACILITY,Positive
+94,"hotel is beautiful, in the heart of the city",hotel,FACILITY,Positive
+95,"towel is very big and there's so much more",towel,FACILITY,Positive
+96,"Not only that, there's also the hotel's private beach , which is great",private beach,FACILITY,Positive
+97,"First time coming to the hotel, space has a cozy and comfortable lobby for taking beautiful photos",space,FACILITY,Positive
+98,"room is beautiful, fully equipped and has very good service",room,FACILITY,Positive
+99,"The room as well as the surrounding area s are very nice and clean",surrounding area,FACILITY,Positive
+100,"means of transportation is flexible",means of transportation,FACILITY,Positive
+101,"rooms is also very comfortable and the food is also delicious",rooms,FACILITY,Positive
+102,"Everything from room hotel is clean",room,FACILITY,Positive
+103,"condition is very good here",condition,FACILITY,Positive
+104,"The motel is designed with modernity and luxury, fully equipped with equipment such as: modern shower tub, mini refrigerator, air conditioner, balcony area with beautiful and romantic sea view...",balcony area,FACILITY,Positive
+105,"hotel infrastructure , the scenery is very beautiful",hotel infrastructure,FACILITY,Positive
+106,"The room is clean, a bit small but view close to the sea is brilliantly beautiful",view close to the sea,FACILITY,Positive
+107,"location good hotel around many restaurants and eateries",location,FACILITY,Positive
+108,"The resort's landscape is beautiful and green, very suitable for relaxing here because here is quiet",here,FACILITY,Positive
+109,"Beautiful, spacious suite, interior is luxurious and comfortable",interior,FACILITY,Positive
+110,"beach is awesome",beach,FACILITY,Positive
+111,"Room is beautifully decorated and full of amenities",Room,FACILITY,Positive
+112,"Surrounding space wide",Surrounding space,FACILITY,Positive
+113,"I stayed in a suit room, spacious room, bathroom and a large, fragrant balcony",bathroom,FACILITY,Positive
+114,"bathroom is clean every day",bathroom,FACILITY,Positive
+115,"Room clean modern interior",Room,FACILITY,Positive
+116,"The room is clean, spacious, fully equipment in the room , new furniture, very beautiful",equipment in the room,FACILITY,Positive
+117,"Room is cleaned up",Room,FACILITY,Positive
+118,"restaurant is spacious, beautiful, and has attentive staff",restaurant,FACILITY,Positive
+119,"Space has many trees, airy, nice room view",Space,FACILITY,Positive
+120,"1) Room view is beautiful",Room view,FACILITY,Positive
+121,"Hotel is beautiful and luxurious",Hotel,FACILITY,Positive
+122,"Rooms is full of amenities",Rooms,FACILITY,Positive
+123,"villas is very beautiful, the sea view is extremely poetic",villas,FACILITY,Positive
+124,"Luxurious, clean interior, green campus , super large hotel area",campus,FACILITY,Positive
+125,"room has modern amenities, the room is clean but the window glass needs to be cleaned more thoroughly",room,FACILITY,Positive
+126,"hotel is good, clean rooms, airy campus, attentive service",hotel,FACILITY,Positive
+127,"rooms : very new and comfortable, the room I booked was not the most expensive but still had a bathtub and a direct sea view, so seeing the sea was very pleasant.",rooms,FACILITY,Positive
+128,"view from the bedroom to the street or garden so both are beautiful",view,FACILITY,Positive
+129,"Room on the mountain side is a bit small but clean and fully equipped",Room,FACILITY,Positive
+130,"hotel is very new, clean, and comfortable",hotel,FACILITY,Positive
+131,"The staff, accommodation and restaurants were all outstanding, including the singer in the Club Bar",restaurants,FACILITY,Positive
+132,"The property is located on Tran Phu beach with a central location and immediate access to the beach, is walking distance to Sailing bar – a famous bar in Nha Trang",location,FACILITY,Positive
+133,"The swimming pool and beach are clean and safe",beach,FACILITY,Positive
+134,"beach is beautiful and has very good service music",beach,FACILITY,Positive
+135,"The room is spacious, I like the beautiful bathroom the most, Jacuzzi tub is very healthy, I can relax while watching the sea",Jacuzzi tub,FACILITY,Positive
+136,"room is so beautiful",room,FACILITY,Positive
+137,"The room is beautiful, very spacious, I have never seen in any hotel where bedding is so soft (easy to sleep in)",bedding,FACILITY,Positive
+138,"campus hotel is large and has a beautiful green lawn",campus,FACILITY,Positive
+139,"beach extremely beautiful and convenient swimming pool",beach,FACILITY,Positive
+140,"Intimate lobby, a variety of restaurants, pasta at Angelina was memorable",lobby,FACILITY,Positive
+141,"As one of the most beautiful resort s in the Vinpearl Phu Quoc system, Vinpearl Resort and Golf PQ has brought me a memorable vacation.",resort,FACILITY,Positive
+142,"hotel is beautiful, amazing scenery",hotel,FACILITY,Positive
+143,"View is beautiful, overlooking the entire Lan Ha Bay",View,FACILITY,Positive
+144,"including the room and public area were clean",public area,FACILITY,Positive
+145,"The rooms are very spacious, the beds comfortable, the bathroom huge and well-appointed",beds,FACILITY,Positive
+146,"Plenty of lounging areas",lounging areas,FACILITY,Positive
+147,"I booked room regular class on Agoda and when I checked in, the receptionist upgraded my room to a sea view room, the room was very nice, especially the sunrise.",room,FACILITY,Positive
+148,"room is clean, beautiful view and enthusiastic and attentive staff",room,FACILITY,Positive
+149,"sea ​​view is beautiful",sea ​​view,FACILITY,Positive
+150,"Spacious, comfortable, clean VIP room, large bathroom with massage tub, wonderful full sea view",bathroom,FACILITY,Positive
+151,"The hotel is located isolated on the island so space is very private",space,FACILITY,Positive
+152,"room is very satisfied",room,FACILITY,Positive
+153,"hotel is beautiful, the room is clean, spacious, comfortable",hotel,FACILITY,Positive
+154,"There are a few shooting areas, but in return, every corner is virtual",corner,FACILITY,Positive
+155,"room is clean and airy",room,FACILITY,Positive
+156,"The room is spacious and modern",room,FACILITY,Positive
+157,"Interior equipment is luxurious, clean and beautiful",Interior equipment,FACILITY,Positive
+158,"The room was superb",room,FACILITY,Positive
+159,"room is clean, beautiful, spacious, and the campus is cool",room,FACILITY,Positive
+160,"The landscape is well taken care of, grass and trees is lush green & full of flowers",grass and trees,FACILITY,Positive
+161,"The overall feel of the hotel/public spaces is very luxurious, and the hotel is only about 5 years old",overall feel of the hotel/public spaces,FACILITY,Positive
+162,"Hotel grounds is large, luxurious, worthy of 5-star status",Hotel grounds,FACILITY,Positive
+163,"nice view spa",view spa,FACILITY,Positive
+164,"Excellent Executive Lounge experience with attentive staff, good food selection, ample drink options and comfortable environment",environment,FACILITY,Positive
+165,"room is clean, beautiful view, delicious breakfast and many options",room,FACILITY,Positive
+166,"Nice hotel, complete amenities in the room",amenities in the room,FACILITY,Positive
+167,"In general, everything is ok, from the rooms to space and the food here",space,FACILITY,Positive
+168,"Clean rooms and modern interiors with poetic sea ​​view",sea ​​view,FACILITY,Positive
+169,"location good hotel",location,FACILITY,Positive
+170,"Room is fully equipped and very spacious!",Room,FACILITY,Positive
+171,"Will visit next time again",next time,LOYALTY,Positive
+172,"We stated here twice - once at the beginning of our stay and at the end after a trip to the north. On our return we were given an upgrade to a bigger room which we really appreciated",stay,LOYALTY,Positive
+173,"Surely if I have the opportunity to go to Nha Trang again, I will choose Muong Thanh to stay",Muong Thanh,LOYALTY,Positive
+174,"Will come back on next occasion",next occasion,LOYALTY,Positive
+175,"next time will be here again",next time,LOYALTY,Positive
+176,"Hopefully next time will receive a voucher when you visit",next time,LOYALTY,Positive
+177,"next time set returns",next time,LOYALTY,Positive
+178,"room is generally good and has enough amenities",room,FACILITY,Neutral
+179,"Marriott has many restaurants and each restaurant has a different design, but one thing they have in common is delicious food and professional service.",Marriott,FACILITY,Neutral
+180,"sea ​​area is a bit small but it's okay",sea ​​area,FACILITY,Neutral
+181,"place is suitable for sunset photography",place,EXPERIENCE,Positive
+182,"The wonderful experience couldn't be better for a perfect getaway",experience,EXPERIENCE,Positive
+183,"In conclusion, this is a completely satisfied vacation trip for our family",vacation trip,EXPERIENCE,Positive
+184,"price is good",price,EXPERIENCE,Positive
+185,"scenery 's beautiful weather is also almost favorable",scenery,EXPERIENCE,Positive
+186,"During our stay the hotel organised our vintage Vespa tour for 4 hours around Hanoi which was safe and lots of fun",vintage Vespa tour,EXPERIENCE,Positive
+187,"It all makes evening great",evening,EXPERIENCE,Positive
+188,"My family and I really enjoyed air in Amiana",air,EXPERIENCE,Positive
+189,"My family really likes this place",this place,EXPERIENCE,Positive
+190,"It was a lovely hotel with great amenities",hotel,EXPERIENCE,Positive
+191,"I went with friends and had a great service experience",service experience,EXPERIENCE,Positive
+192,"Thank you hotel for giving my family a wonderful experience",experience,EXPERIENCE,Positive
+193,"Hotel is awesome",Hotel,EXPERIENCE,Positive
+194,"My friend and I had a wonderful vacation at vinpearl Ha Long",vacation,EXPERIENCE,Positive
+195,"Friendly staff, bringing a comfortable, family-like feeling. The professionalism and thoughtfulness of our very polite and sweet-talking staff makes our trip much more enjoyable.",trip,EXPERIENCE,Positive
+196,"In general, it's ok everyone, room price is quite good in my opinion",room price,EXPERIENCE,Positive
+197,"I am very satisfied with hotel",hotel,EXPERIENCE,Positive
+198,"just a totally amazing stay",stay,EXPERIENCE,Positive
+199,"Thank you Crowne Plaza Danang Hotel for helping me have a wonderful honey moon",honey moon,EXPERIENCE,Positive
+200,"Privacy and quiet at the 5-star khu resort in the middle of summer",khu resort,EXPERIENCE,Positive
+201,"My wife and I had a very memorable vacation at Vinpearl",vacation,EXPERIENCE,Positive
+202,"room price conforms to 5s standards",room price,EXPERIENCE,Positive
+203,"My wife and I had a very fun tour",tour,EXPERIENCE,Positive
+204,"Excellent Executive Lounge experience with attentive staff, good food selection, ample drink options and comfortable environment",Executive Lounge experience,EXPERIENCE,Positive
+205,"Customers experience all services quality and extreme comfort",all services,EXPERIENCE,Positive
+206,"everything is good from shore to island",everything,EXPERIENCE,Positive
+207,"Overall, hotel is quite good",hotel,EXPERIENCE,Positive
+208,"Thank you to staff member Hao in the lobby, thank you for giving us a perfect vacation with the best experiences",experiences,EXPERIENCE,Positive
+209,"hotel is very beautiful, located right in the center, very wonderful",hotel,EXPERIENCE,Positive
+210,"feel is comfortable and relaxing",feel,EXPERIENCE,Positive
+211,"vacation is very good",vacation,EXPERIENCE,Positive
+212,"client experiences all quality services and extreme comfort",client,EXPERIENCE,Positive
+213,"The hotel campus is very large, with parking",parking,AMENITY,Positive
+214,"Extremely cute staff, full utilities",utilities,AMENITY,Positive
+215,"And the breakfast is by the best I've experienced in any hotel so far",breakfast,AMENITY,Positive
+216,"pool is large, beautiful and clean",pool,AMENITY,Positive
+217,"restaurant beautiful, good food",restaurant,AMENITY,Positive
+218,"Chef Cuong and Linh at Steam n Spice restaurant served us a delicious dinner with sum dishes, wonton noodles .,sum dishes", wonton noodles,AMENITY,Positive
+219,"Room prices are quite reasonable, many utilities s included",utilities,AMENITY,Positive
+220,"We ate in the restaurant most evenings and the food was tasty and there was a good selection of cocktails",cocktails,AMENITY,Positive
+221,"The rooms are also very comfortable and food is also very delicious",food,AMENITY,Positive
+222,"Beach and swimming pool of the hotel area is very nice and clean",Beach and swimming pool of the hotel area,AMENITY,Positive
+223,"breakfast buffet is diverse and quite good",breakfast buffet,AMENITY,Positive
+224,"Service is very good, food and drinks at the hotel is delicious",food and drinks,AMENITY,Positive
+225,"has breakfast food which is quite suitable",breakfast food,AMENITY,Positive
+226,"This was the first time I have eaten abalone in years and it was fantastic",abalone,AMENITY,Positive
+227,"food is very delicious, the staff is enthusiastic, thoughtful, and considerate of customers",food,AMENITY,Positive
+228,"morning buffet is delicious",morning buffet,AMENITY,Positive
+229,"breakfast has a wide variety of delicious chicken pho",breakfast,AMENITY,Positive
+230,"food is rich in swimming pools and beautiful beaches",food,AMENITY,Positive
+231,"The location, food, room cleaning, the amenities, and all staffs - is good",amenities,AMENITY,Positive
+232,"Intimate lobby, a variety of restaurants, pasta at Angelina was memorable",pasta,AMENITY,Positive
+233,"We really like our breakfast",breakfast,AMENITY,Positive
+234,"pool is beautiful, not too crowded",pool,AMENITY,Positive
+235,"The service here is very good, dish is diverse and attractively decorated",dish,AMENITY,Positive
+236,"dishes went up quite quickly and was just right for us",dishes,AMENITY,Positive
+237,"Rich, diverse and super delicious breakfast with pure, fresh fruit juice",fruit juice,AMENITY,Positive
+238,"Appreciate the hotel's Grill rental service",Grill rental service,AMENITY,Positive
+239,"swimming pool is breathtakingly beautiful",swimming pool,AMENITY,Positive
+240,"playground , diverse, many games",playground,AMENITY,Positive
+241,"The hotel room is clean, fully equipped, including pool which is quite convenient",pool,AMENITY,Positive
+242,"breakfast is diverse, staff serves quickly",breakfast,AMENITY,Positive
+243,"The swimming pool is endless, the water is cool blue, there is bar on the lake so you can swim while enjoying wine, fruit juice,... it's great",bar on the lake,AMENITY,Positive
+244,"When I booked a room at the hotel, I also got a free ticket to Vinpearl land for a day of fun, buffet breakfast, pool , fitness room, and sauna completely free.",pool,AMENITY,Positive
+245,"food is delicious and quite diverse",food,AMENITY,Positive
+246,"Nice clean room, beautiful pool",pool,AMENITY,Positive
+247,"Dish 's kitchen is very delicious, the menu is rich and presented in an attractive and eye-catching way",Dish,AMENITY,Positive
+248,"have breakfast is delicious and very satisfying",have breakfast,AMENITY,Positive
+249,"There is a clean, fully equipped gym",gym,AMENITY,Positive
+250,"have breakfast is simple but quite complete for a new day",have breakfast,AMENITY,Positive
+251,"eat delicious, good service",eat,AMENITY,Positive
+252,"The spa area is fabulous",spa area,AMENITY,Positive
+253,"Oh, but there's still a fresh restaurant (the food is delicious and space is spacious).",space,AMENITY,Positive
+254,"Nice, clean room, with free beverage",beverage,AMENITY,Positive
+255,"dish ngon",dish,AMENITY,Positive
+256,"We really enjoy the Breakfast Buffet as well",Breakfast Buffet,AMENITY,Positive
+257,"In addition to accommodation services, hotel Crown plaza also has spa services, gyms, and entertainment areas for children.",hotel,AMENITY,Positive
+258,"Australian food is very impressive, wine is delicious and lots of fresh fruit",wine,AMENITY,Positive
+259,"Delicious food, quality, reasonable prices, food is diverse and rich",food,AMENITY,Positive
+260,"restaurant is luxurious, clean, delicious food and beautifully decorated",restaurant,AMENITY,Positive
+261,"food is very delicious (including boiling pho)",food,AMENITY,Positive
+262,"restaurant has diverse and delicious dishes",restaurant,AMENITY,Positive
+263,"Intimate lobby, a variety of restaurants, pasta at Angelina was memorable",restaurants,AMENITY,Positive
+264,"Hotel has a play area for children and a shallow swimming pool for children. I really like it",Hotel,AMENITY,Positive
+265,"food quality ngon",food quality,AMENITY,Positive
+266,"The food was delicious, the rooftop restaurant was lovely with great views",rooftop restaurant,AMENITY,Positive
+267,"food is fast, delicious, and has a wide variety of dishes",food,AMENITY,Positive
+268,"food comes in a variety of skin types, suitable for both adults and babies, with many dishes and drinks",food,AMENITY,Positive
+269,"Buffet with many dishes, menu has exquisite variety",menu,AMENITY,Positive
+270,"food quality suits your taste",food quality,AMENITY,Positive
+271,"The private pool and buffet are delicious and the spa services are pretty great",buffet,AMENITY,Positive
+272,"food is delicious and diverse",food,AMENITY,Positive
+273,"cooking class is truly amazing!",cooking class,AMENITY,Positive
+274,"Sua gave us a tour of the beautiful lake and garden and showed us all amenities of the hotel, which was very useful as it is huge and we used all",amenities of the hotel,AMENITY,Positive
+275,"many playground s",playground,AMENITY,Positive
+276,"First time coming to Vung Tau, chose Mercure as a vacation destination because I was attracted by the beautiful beach image right from the moment of booking.",Mercure,BRANDING,Positive
+277,"Great Vinpear Cua So !",Vinpear Cua So,BRANDING,Positive
+278,"quality meets 5-star standards",quality,BRANDING,Positive
+279,"Will support Vinpearl Ha Long",Vinpearl Ha Long,BRANDING,Positive
+280,"Deserving of resort 5*, very beautiful resort, convenient location to go to the center",resort,BRANDING,Positive
+281,"Near the beach, convenient Book grab, affordable price. Should choose Muong Thanh grand hotel",Muong Thanh grand hotel,BRANDING,Positive
+282,"Every time I go to the dock, I will visit Mercure Vung Tau",Mercure Vung Tau,BRANDING,Positive
+283,"We picked-up Vin pearl resort as recommendation from out friend who was there some time ago",Vin pearl resort,BRANDING,Positive
+284,"I chose Muong Thanh as the place where my family rested",Muong Thanh,BRANDING,Positive
+285,"Very wonderful.. next time I come to Phu Quoc, I will still choose to stay at hotel . Thank you for giving me a complete trip",hotel,BRANDING,Positive
+286,"But restaurant breakfast is too small, very cramped, the food here is not very rich.",restaurant,FACILITY,Negative
+287,"However, kitchen system has not been used yet",kitchen system,FACILITY,Negative
+288,"room is quite complete but a bit dark",room,FACILITY,Negative
+289,"elevator is a bit slow during rush hour",elevator,FACILITY,Negative
+290,"The sanitary equipment s are old and have broken down in some places",sanitary equipment,FACILITY,Negative
+291,"room is small but fully equipped and very clean",room,FACILITY,Negative
+292,"The bathroom door is not tight so when showering, water splashes out. toilet floor (room 221)",toilet floor,FACILITY,Negative
+293,"No aircondition in the recreation senter",aircondition,FACILITY,Negative
+294,"lamp room is dark and a bit old",lamp,FACILITY,Negative
+295,"Room: many broken appliances (night lights), dirty sofa. house door vs squeaks, very difficult to pull",house door,FACILITY,Negative
+296,"The price is indeed high, but price 's value lies in the view",price,EXPERIENCE,Negative
+297,"dinner dish in the menu is neither rich nor very delicious",dinner dish,AMENITY,Negative
+298,"Fried Tay Ho shrimp cake is tough",Tay Ho shrimp cake,AMENITY,Negative
+299,"However, the minus point of vinpearl is that the buffet is too bad, food is not special, seafood only has octopus and clams, only drinking mineral water and tea, soft drinks and beer are too expensive.",food,AMENITY,Negative
+300,"sea ​​bass is friable",sea ​​bass,AMENITY,Negative
+301,"The gym is small with a great view and the shower room is also lovely",gym,AMENITY,Negative
+302,"2. The room doesn't have toothbrush but there are two ice creams, WTF? The day I went I didn't bring a toothbrush because I thought the hotel would have to call early in the morning to ask for a toothbrush and comb????",toothbrush,AMENITY,Negative
+303,"however swimming pool is small",swimming pool,AMENITY,Negative
+304,"A small note is that there are a lot of customers in the cafe area, making the resort a bit noisy and there are many guests entering swimming pool area and the guest area to take photos, making it uncomfortable.",swimming pool area,AMENITY,Negative
+305,"pool is not too big but is also very nice for families. Breakfast is delicious, but because my family got down a bit late, it often ran out of food.",pool,AMENITY,Negative
+306,"Service, employee quality , staff attitude are the worst of any resort I've ever been to",employee quality,SERVICE,Negative
+307,"The daily room service always forgot to refill stuff in bathroom",room service,SERVICE,Negative
+308,"Enthusiastic staff but the exception is that I went to complaint 3 times and received the response check again",complaint,SERVICE,Negative
+309,"have breakfast is fine",have breakfast,AMENITY,Neutral
+310,"food is okay",food,AMENITY,Neutral
+311,"pool is fine",pool,AMENITY,Neutral
+312,"My family came to Mercure thanks to a friend's recommendation",Mercure,BRANDING,Neutral
