@@ -323,7 +323,7 @@ set BERT_NAME=bert-base-uncased
 set CLAUSE_SPLIT_MODE=rulebase
 uvicorn server.app:app --host 0.0.0.0 --port 5000
 
-set CLAUSE_SPLIT_MODE=rulebase && uvicorn server.app:app --host 0.0.0.0 --port 5000
+set CLAUSE_SPLIT_MODE=uos && uvicorn server.app:app --host 0.0.0.0 --port 5000
 ```
 
 

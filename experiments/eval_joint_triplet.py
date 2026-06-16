@@ -49,11 +49,11 @@ OUT_CSV      = ROOT / "runs_ate" / "eval_joint_triplet.csv"
 
 # ─── Model selection ──────────────────────────────────────────────────────────
 # Change MODEL_TYPE to switch between encoders (must match run_joint_experiments.py).
-MODEL_TYPE = "t5"   # "bert" | "t5"
+MODEL_TYPE = "bert"   # "bert" | "t5"
 
 _MODEL_CONFIGS = {
-    # "bert": "bert-base-uncased",
-    "t5":   "t5-base",
+    "bert": "bert-base-uncased",
+    # "t5":   "t5-base",
 }
 if MODEL_TYPE not in _MODEL_CONFIGS:
     raise ValueError(f"Unknown MODEL_TYPE={MODEL_TYPE!r}. Choose from: {list(_MODEL_CONFIGS)}")
