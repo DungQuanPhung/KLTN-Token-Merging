@@ -1,0 +1,66 @@
+entity_id,sentence,unit,predicted_term,gold_term,correct
+1,they upgraded us to a beautiful suite without us even asking,They upgraded us to a beautiful suite without us even asking.,suite,they,0
+6,Exceptional staff and customer service,Exceptional staff and customer service.,staff,staff and customer service,0
+8,"Thank you very enthusiastic staff Hoang, Ngoc and you drive here","Thank you very enthusiastic staff Hoang, Ngoc and you drive here.",staff,you drive,0
+9,The service staff is very attentive and conscientious,The service staff is very attentive.,service staff,conscientious,0
+10,"Best of all is the incredible staff—every single person we met was warm, gracious and could not do enough to make our trip memorable",The staff is incredible.,staff,person,0
+13,"Thank you Vinpearl's service for bringing wonderful moments of rest, and I will bring my family back here many more times.","Thank you Vinpearl's service for bringing wonderful moments of rest, and I will bring my family back here many more times.","moments of rest,",service,0
+40,"The staff here are very friendly, the lovely Giang friend helped me a lot from the time I checked in to the time I checked out.",The staff here are very friendly.,staff,Giang friend,0
+43,"However, the swimming pool and service are very good, you spa is very enthusiastic","However, the swimming pool and service are very good, you spa is very enthusiastic.",you spa,you,0
+46,"friendly staff, enthusiastic",Friendly staff.,staff.,friendly,0
+53,Thanks to Lauro at restaurant,Thanks to Lauro at restaurant.,restaurant.,Lauro,0
+57,"Honestly, we felt comfortable and safe in Hanoi because of all the help",We felt comfortable.,We,the help,0
+63,"I came to Phu Quoc for the first time and made a lucky choice to stay at the vinholiday fiesta hotel. Even though the hotel is 3*, the rooms and staff here are treated like 5*.",I came to Phu Quoc for the first time.,Phu Quoc,staff,0
+75,"However, the hotel equipment is a bit old, but in return, serve 's enthusiasm and friendly staff are ok.",The hotel equipment is a bit old.,hotel equipment,serve,0
+76,You staff is thoughtful and professional,The staff is thoughtful and professional.,staff,You staff,0
+78,10 points for the attitude and professionalism of the service staff,The attitude of the service staff is 10 points.,service staff,service,0
+87,"First of all, it is located in the middle of Old Quarter so Hoan Kiem lake, night market, and especially beer street are in a walking distance","First of all, it is located in the middle of Old Quarter so Hoan Kiem lake, night market, and especially beer street are in a walking distance.","Hoan Kiem lake, night market, and especially beer street",it,0
+88,resort beautiful clean rooms with sea view and full services,The rooms are clean.,rooms,resort,0
+89,Modern interior clean room,The room is modern.,room,interior,0
+90,"the landscap is very nice, green, and clean",The landscape is very nice.,landscape,landscap,0
+97,"First time coming to the hotel, space has a cozy and comfortable lobby for taking beautiful photos",The lobby is cozy and comfortable.,lobby,space,0
+99,The room as well as the surrounding area s are very nice and clean,The room is very nice and clean.,room,surrounding area,0
+106,"The room is clean, a bit small but view close to the sea is brilliantly beautiful",The room is clean.,room,view close to the sea,0
+112,Surrounding space wide,The surrounding space is wide.,space,Surrounding space,0
+116,"The room is clean, spacious, fully equipment in the room , new furniture, very beautiful",The room is clean.,room,equipment in the room,0
+120,1) Room view is beautiful,The room view is beautiful.,room,Room view,0
+122,Rooms is full of amenities,The rooms are full of amenities.,amenities.,Rooms,0
+123,"villas is very beautiful, the sea view is extremely poetic",The villas is very beautiful.,The villas,villas,0
+141,"As one of the most beautiful resort s in the Vinpearl Phu Quoc system, Vinpearl Resort and Golf PQ has brought me a memorable vacation.",Vinpearl Resort and Golf PQ has brought me a memorable vacation.,vacation.,resort,0
+149,sea ​​view is beautiful,The sea view is beautiful.,view,sea ​​view,0
+154,"There are a few shooting areas, but in return, every corner is virtual","There are a few shooting areas, but in return, every corner is virtual.",every corner,corner,0
+160,"The landscape is well taken care of, grass and trees is lush green & full of flowers",The landscape is well taken care of.,landscape,grass and trees,0
+161,"The overall feel of the hotel/public spaces is very luxurious, and the hotel is only about 5 years old",The overall feel of the hotel/public spaces is very luxurious.,hotel/public spaces,overall feel of the hotel/public spaces,0
+163,nice view spa,The view is nice.,view,view spa,0
+166,"Nice hotel, complete amenities in the room",Nice hotel.,hotel.,amenities in the room,0
+168,Clean rooms and modern interiors with poetic sea ​​view,The rooms are clean.,rooms,sea ​​view,0
+172,We stated here twice - once at the beginning of our stay and at the end after a trip to the north. On our return we were given an upgrade to a bigger room which we really appreciated,We stated here twice - once at the beginning of our stay and at the end after a trip to the north. On our return we were given an upgrade to a bigger room which we really appreciated.,room,stay,0
+177,next time set returns,next time set returns.,next time set,next time,0
+180,sea ​​area is a bit small but it's okay,The sea area is a bit small.,sea area,sea ​​area,0
+186,During our stay the hotel organised our vintage Vespa tour for 4 hours around Hanoi which was safe and lots of fun,The hotel organised our vintage Vespa tour for 4 hours around Hanoi.,The hotel,vintage Vespa tour,0
+191,I went with friends and had a great service experience,I went with friends.,I went with friends.,service experience,0
+195,"Friendly staff, bringing a comfortable, family-like feeling. The professionalism and thoughtfulness of our very polite and sweet-talking staff makes our trip much more enjoyable.",The staff is friendly.,staff,trip,0
+204,"Excellent Executive Lounge experience with attentive staff, good food selection, ample drink options and comfortable environment",The Executive Lounge experience was excellent.,Executive Lounge,Executive Lounge experience,0
+205,Customers experience all services quality and extreme comfort,Customers experience all services quality.,services,all services,0
+208,"Thank you to staff member Hao in the lobby, thank you for giving us a perfect vacation with the best experiences","Thank you to staff member Hao in the lobby, thank you for giving us a perfect vacation with the best experiences.",staff member Hao,experiences,0
+222,Beach and swimming pool of the hotel area is very nice and clean,The beach is very nice and clean.,beach,Beach and swimming pool of the hotel area,0
+229,breakfast has a wide variety of delicious chicken pho,Breakfast has a wide variety of delicious chicken pho.,chicken pho.,breakfast,0
+243,"The swimming pool is endless, the water is cool blue, there is bar on the lake so you can swim while enjoying wine, fruit juice,... it's great",The swimming pool is endless.,pool,bar on the lake,0
+247,"Dish 's kitchen is very delicious, the menu is rich and presented in an attractive and eye-catching way",The kitchen is very delicious.,kitchen,Dish,0
+248,have breakfast is delicious and very satisfying,Breakfast is delicious and very satisfying.,Breakfast,have breakfast,0
+250,have breakfast is simple but quite complete for a new day,The breakfast is simple.,breakfast,have breakfast,0
+257,"In addition to accommodation services, hotel Crown plaza also has spa services, gyms, and entertainment areas for children.",The hotel has spa services.,spa services.,hotel,0
+262,restaurant has diverse and delicious dishes,The restaurant has diverse and delicious dishes.,dishes.,restaurant,0
+274,"Sua gave us a tour of the beautiful lake and garden and showed us all amenities of the hotel, which was very useful as it is huge and we used all","Sua gave us a tour of the beautiful lake and garden and showed us all amenities of the hotel, which was very useful as it is huge and we used all.",Sua,amenities of the hotel,0
+276,"First time coming to Vung Tau, chose Mercure as a vacation destination because I was attracted by the beautiful beach image right from the moment of booking.",The beach is beautiful.,beach,Mercure,0
+281,"Near the beach, convenient Book grab, affordable price. Should choose Muong Thanh grand hotel","Near the beach, convenient Book grab, affordable price. Should choose Muong Thanh grand hotel.",price.,Muong Thanh grand hotel,0
+286,"But restaurant breakfast is too small, very cramped, the food here is not very rich.",The restaurant breakfast is too small.,restaurant breakfast,restaurant,0
+292,"The bathroom door is not tight so when showering, water splashes out. toilet floor (room 221)",The bathroom door is not tight.,bathroom door,toilet floor,0
+293,No aircondition in the recreation senter,The recreation senter has no aircondition.,recreation senter,aircondition,0
+294,lamp room is dark and a bit old,The lamp room is dark.,lamp room,lamp,0
+298,Fried Tay Ho shrimp cake is tough,Fried Tay Ho shrimp cake is tough.,Fried Tay Ho shrimp cake,Tay Ho shrimp cake,0
+300,sea ​​bass is friable,The sea bass is friable.,sea bass,sea ​​bass,0
+302,"2. The room doesn't have toothbrush but there are two ice creams, WTF? The day I went I didn't bring a toothbrush because I thought the hotel would have to call early in the morning to ask for a toothbrush and comb????","2. The room doesn't have toothbrush but there are two ice creams, WTF? The day I went I didn't bring a toothbrush because I thought the hotel would have to call early in the morning to ask for a toothbrush and comb????",but there,toothbrush,0
+304,"A small note is that there are a lot of customers in the cafe area, making the resort a bit noisy and there are many guests entering swimming pool area and the guest area to take photos, making it uncomfortable.",There are a lot of customers in the cafe area.,cafe area.,swimming pool area,0
+307,The daily room service always forgot to refill stuff in bathroom,The room service always forgot to refill stuff in bathroom.,bathroom.,room service,0
+308,Enthusiastic staff but the exception is that I went to complaint 3 times and received the response check again,The staff is enthusiastic.,staff,complaint,0
