@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import csv
 import json
+import time
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -49,11 +50,11 @@ OUT_CSV      = ROOT / "runs_ate" / "eval_joint_triplet.csv"
 
 # ─── Model selection ──────────────────────────────────────────────────────────
 # Change MODEL_TYPE to switch between encoders (must match run_joint_experiments.py).
-MODEL_TYPE = "t5"   # "bert" | "t5"
+MODEL_TYPE = "bert"   # "bert" | "t5"
 
 _MODEL_CONFIGS = {
-    # "bert": "bert-base-uncased",
-    "t5":   "t5-base",
+    "bert": "bert-base-uncased",
+    # "t5":   "t5-base",
 }
 if MODEL_TYPE not in _MODEL_CONFIGS:
     raise ValueError(f"Unknown MODEL_TYPE={MODEL_TYPE!r}. Choose from: {list(_MODEL_CONFIGS)}")
@@ -418,8 +419,15 @@ def main() -> None:
             print(f"  [error] {e}")
             continue
 
-        print(f"  Running inference on {sum(len(v) for v in ate_preds.values())} terms …")
+        num_terms = sum(len(v) for v in ate_preds.values())
+        num_sents = len(ate_preds)
+        print(f"  Running inference on {num_terms} terms …")
+        _t0 = time.perf_counter()
         pred_by_sent = predict_triplets(model, tokenizer, ate_preds, cat_map, cat_labels)
+        infer_sec = time.perf_counter() - _t0
+        print(f"  Inference time : {infer_sec:.3f}s  "
+              f"({infer_sec/num_sents*1000:.1f} ms/sent, "
+              f"{infer_sec/num_terms*1000:.1f} ms/term)")
 
         m      = micro_prf(gold_by_sent, pred_by_sent, all_sentences)
         macro  = macro_prf(gold_by_sent, pred_by_sent, all_sentences)
@@ -432,6 +440,7 @@ def main() -> None:
         rows.append({
             "config":            config_name,
             "train_time_sec":    train_time_sec,
+            "infer_time_sec":    round(infer_sec, 3),
             "ate_f1":            ate_m["f1"],
             "ate_precision":     ate_m["precision"],
             "ate_recall":        ate_m["recall"],
@@ -453,20 +462,22 @@ def main() -> None:
             torch.cuda.empty_cache()
 
     # ── Summary table ──────────────────────────────────────────────────────────
-    W = 126
+    W = 142
     print(f"\n{'═' * W}")
     print("JOINT TRIPLET EVALUATION  (term ∩ category ∩ sentiment — ALL 3 phải đúng)")
     print(f"{'═' * W}")
-    print(f"  {'Config':<26}  {'Time(s)':>8}  {'ATE-F1':>8}"
+    print(f"  {'Config':<26}  {'Train(s)':>8}  {'Infer(s)':>8}  {'ATE-F1':>8}"
           f"  {'Micro-P':>8}  {'Micro-R':>8}  {'Micro-F1':>9}"
           f"  {'Macro-P':>8}  {'Macro-R':>8}  {'Macro-F1':>9}"
           f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
     print(f"{'─' * W}")
     for row in rows:
         t = row["train_time_sec"]
-        time_str = f"{t:>7.1f}s" if t == t else "     N/A"
+        i = row["infer_time_sec"]
+        train_str = f"{t:>7.1f}s" if t == t else "     N/A"
+        infer_str = f"{i:>7.3f}s" if i == i else "     N/A"
         print(
-            f"  {row['config']:<26}  {time_str}"
+            f"  {row['config']:<26}  {train_str}  {infer_str}"
             f"  {row['ate_f1']:>7.2f}%"
             f"  {row['micro_precision']:>7.2f}%"
             f"  {row['micro_recall']:>7.2f}%"
@@ -477,7 +488,9 @@ def main() -> None:
             f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
         )
     print(f"{'═' * W}")
-    print("  ATE-F1    : F1 trích xuất aspect term (T5)")
+    print("  Train(s)  : thời gian train model")
+    print("  Infer(s)  : thời gian inference trên toàn bộ test set")
+    print("  ATE-F1    : F1 trích xuất aspect term")
     print("  Micro-F1  : micro F1 triplet — phản ánh overall performance")
     print("  Macro-F1  : macro F1 triplet theo category — nhạy với minority class")
     print(f"{'═' * W}")
@@ -488,7 +501,8 @@ def main() -> None:
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["config", "train_time_sec", "ate_f1", "ate_precision", "ate_recall",
+            fieldnames=["config", "train_time_sec", "infer_time_sec",
+                        "ate_f1", "ate_precision", "ate_recall",
                         "micro_precision", "micro_recall", "micro_f1",
                         "macro_precision", "macro_recall", "macro_f1",
                         "tp", "fp", "fn"] + all_cat_keys,

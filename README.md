@@ -398,3 +398,11 @@ python experiments/eval_joint_triplet.py
 Hoặc dùng ! prefix trong Claude Code:
 ! python experiments/run_ate_inference.py
 ! python experiments/eval_joint_triplet.py
+
+
+
+# Dùng file mặc định (runs_ate/test_ate_predictions.csv)
+python experiments/eval_joint_triplet_run.py --model-type bert
+
+# Chỉ định file ATE tuỳ ý
+python experiments/eval_joint_triplet_run.py --model-type bert --ate-csv runs_ate/my_predictions.csv
