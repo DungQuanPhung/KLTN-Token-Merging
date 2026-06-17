@@ -43,7 +43,7 @@ from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
 
 DEVICE       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TEST_APC     = ROOT / "dataset" / "test.apc"
-ATE_CSV      = ROOT / "runs_ate" / "test_ate_predictions.csv"
+ATE_CSV      = ROOT / "runs_ate" / "results_ate_final.csv"
 RUNS_DIR     = ROOT / "runs_joint"
 OUT_CSV      = ROOT / "runs_ate" / "eval_joint_triplet.csv"
 
