@@ -416,6 +416,29 @@ def macro_prf(
     }
 
 
+# ─── Entity-level hit accuracy ───────────────────────────────────────────────
+
+def entity_hit_acc(
+    gold_by_key:  Dict,
+    pred_by_key:  Dict,
+    all_keys:     list,
+) -> Dict[str, float]:
+    """Câu/entity đúng nếu có ít nhất 1 predicted triplet khớp gold.
+    Extra wrong predictions trong cùng nhóm không bị phạt."""
+    hits = 0
+    for key in all_keys:
+        gold = gold_by_key.get(key, set())
+        pred = pred_by_key.get(key, set())
+        if gold & pred:
+            hits += 1
+    total = len(all_keys)
+    return {
+        "hits":     hits,
+        "total":    total,
+        "accuracy": round(hits / max(total, 1) * 100, 2),
+    }
+
+
 # ─── ATE-only metrics (term extraction, ignore cat+sent) ─────────────────────
 
 def ate_metrics(
@@ -505,6 +528,9 @@ def main() -> None:
         for cls, f1_cls in macro["per_class"].items():
             print(f"    {cls:<22}: {f1_cls:.2f}%")
 
+        hit = entity_hit_acc(gold_by_sent, pred_by_sent, all_sentences)
+        print(f"  Hit-Acc   → {hit['hits']}/{hit['total']} câu có ≥1 triplet đúng = {hit['accuracy']}%")
+
         oracle = oracle_metrics(model, tokenizer, TEST_APC, cat_map, cat_labels)
         print(f"  Oracle (gold term, upper bound) → "
               f"Cat-Acc={oracle['cat_acc']}%  Sent-Acc={oracle['sent_acc']}%  "
@@ -523,6 +549,8 @@ def main() -> None:
             "macro_precision":   macro["precision"],
             "macro_recall":      macro["recall"],
             "macro_f1":          macro["f1"],
+            "hit_acc":           hit["accuracy"],
+            "hit_count":         hit["hits"],
             "oracle_cat_acc":    oracle["cat_acc"],
             "oracle_sent_acc":   oracle["sent_acc"],
             "oracle_joint_acc":  oracle["joint_acc"],
@@ -538,13 +566,14 @@ def main() -> None:
             torch.cuda.empty_cache()
 
     # ── Summary table ──────────────────────────────────────────────────────────
-    W = 142
+    W = 156
     print(f"\n{'═' * W}")
     print("JOINT TRIPLET EVALUATION  (term ∩ category ∩ sentiment — ALL 3 phải đúng)")
     print(f"{'═' * W}")
     print(f"  {'Config':<26}  {'Train(s)':>8}  {'Infer(s)':>8}  {'ATE-F1':>8}"
           f"  {'Micro-P':>8}  {'Micro-R':>8}  {'Micro-F1':>9}"
           f"  {'Macro-P':>8}  {'Macro-R':>8}  {'Macro-F1':>9}"
+          f"  {'HitAcc':>8}"
           f"  {'OrcCat':>8}  {'OrcSent':>8}  {'OrcJoint':>9}"
           f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
     print(f"{'─' * W}")
@@ -562,6 +591,7 @@ def main() -> None:
             f"  {row['macro_precision']:>7.2f}%"
             f"  {row['macro_recall']:>7.2f}%"
             f"  {row['macro_f1']:>8.2f}%"
+            f"  {row['hit_acc']:>7.2f}%"
             f"  {row['oracle_cat_acc']:>7.2f}%"
             f"  {row['oracle_sent_acc']:>7.2f}%"
             f"  {row['oracle_joint_acc']:>8.2f}%"
@@ -573,6 +603,7 @@ def main() -> None:
     print("  ATE-F1    : F1 trích xuất aspect term")
     print("  Micro-F1  : micro F1 triplet — phản ánh overall performance")
     print("  Macro-F1  : macro F1 triplet theo category — nhạy với minority class")
+    print("  HitAcc    : % câu có ≥1 predicted triplet khớp gold (entity-level, không phạt extra pred)")
     print("  Orc*      : ORACLE trên gold term (upper bound) — Cat/Sent/Joint accuracy")
     print("              đo riêng tầng phân loại, KHÔNG tính lỗi của ATE")
     print(f"{'═' * W}")
@@ -587,6 +618,7 @@ def main() -> None:
                         "ate_f1", "ate_precision", "ate_recall",
                         "micro_precision", "micro_recall", "micro_f1",
                         "macro_precision", "macro_recall", "macro_f1",
+                        "hit_acc", "hit_count",
                         "oracle_cat_acc", "oracle_sent_acc", "oracle_joint_acc",
                         "tp", "fp", "fn"] + all_cat_keys,
             extrasaction="ignore",

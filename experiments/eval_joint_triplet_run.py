@@ -8,21 +8,28 @@ Usage (from thesis_apc_baseline/):
     # Eval tất cả config Bert
     python experiments/eval_joint_triplet_run.py --model-type bert
 
-    # Chỉ định thư mục chứa model tuỳ ý
+    # Chỉ định ATE file tuỳ ý
+    python experiments/eval_joint_triplet_run.py --model-type bert --ate-csv runs_ate/results_ate_final.csv
+
+    # Chỉ định thư mục model tuỳ ý
     python experiments/eval_joint_triplet_run.py --model-type t5 --runs-dir path/to/dir
 
 Cách hoạt động:
-    Script này override 3 biến trong eval_joint_triplet trước khi chạy:
-        MODEL_TYPE  → "bert" hoặc "t5"
-        PRETRAINED  → "bert-base-uncased" hoặc "t5-base"
-        RUNS_DIR    → ROOT/Bert hoặc ROOT/T5 (hoặc --runs-dir nếu cung cấp)
-    Sau đó gọi hàm main() của eval_joint_triplet.
+    1. Align sentence trong ATE CSV theo thứ tự dòng với test.apc
+       (dòng i CSV = entry i test.apc — không match text)
+    2. Override 5 biến trong eval_joint_triplet:
+           MODEL_TYPE, PRETRAINED, RUNS_DIR, ATE_CSV, OUT_CSV
+    3. Gọi main() của eval_joint_triplet — toàn bộ tính toán giữ nguyên.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv as _csv
+import importlib.util as _ilu
+import os as _os
 import sys
+import tempfile as _tmp
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,26 +45,20 @@ parser.add_argument(
 )
 parser.add_argument(
     "--runs-dir", type=str, default=None,
-    help="Override thư mục chứa các run (mặc định: ROOT/Bert hoặc ROOT/T5)",
+    help="Thư mục chứa các run (mặc định: ROOT/Bert hoặc ROOT/T5)",
 )
 parser.add_argument(
     "--ate-csv", type=str, default=None,
-    help="Đường dẫn file ATE predictions CSV (mặc định: runs_ate/test_ate_predictions.csv)",
+    help="File ATE predictions CSV (mặc định: runs_ate/test_ate_predictions.csv)",
 )
 args = parser.parse_args()
 
+# ─── Resolve config ───────────────────────────────────────────────────────────
+
 MODEL_TYPE = args.model_type.lower()
-_MODEL_CONFIGS = {
-    "bert": "bert-base-uncased",
-    "t5":   "t5-base",
-}
-PRETRAINED = _MODEL_CONFIGS[MODEL_TYPE]
+PRETRAINED = {"bert": "bert-base-uncased", "t5": "t5-base"}[MODEL_TYPE]
 
-if args.runs_dir:
-    RUNS_DIR = Path(args.runs_dir)
-else:
-    RUNS_DIR = ROOT / ("Bert" if MODEL_TYPE == "bert" else "T5")
-
+RUNS_DIR = Path(args.runs_dir) if args.runs_dir else ROOT / ("Bert" if MODEL_TYPE == "bert" else "T5")
 if not RUNS_DIR.is_dir():
     print(f"[ERROR] Không tìm thấy thư mục: {RUNS_DIR}")
     sys.exit(1)
@@ -66,15 +67,11 @@ ATE_CSV = Path(args.ate_csv) if args.ate_csv else ROOT / "runs_ate" / "test_ate_
 
 # ─── Align câu ATE CSV theo thứ tự dòng với test.apc ─────────────────────────
 # Dòng i trong ATE CSV tương ứng với entry i trong test.apc.
-# Thay sentence text trong CSV bằng sentence text chuẩn từ test.apc theo index.
+# Thay sentence text bằng gold sentence theo index để đảm bảo khớp exact string.
 
-import csv as _csv
-import tempfile as _tmp
-import os as _os
 from dataset_utils import parse_apc_file as _parse_apc
 
-_gold_entries = _parse_apc(str(ROOT / "dataset" / "test.apc"))
-_gold_sents   = [e["text"] for e in _gold_entries]  # 1 entry per row in test.apc
+_gold_sents = [e["text"] for e in _parse_apc(str(ROOT / "dataset" / "test.apc"))]
 
 _tmp_path = None
 with open(ATE_CSV, newline="", encoding="utf-8") as _fin:
@@ -82,23 +79,22 @@ with open(ATE_CSV, newline="", encoding="utf-8") as _fin:
     _fieldnames = list(_rows[0].keys()) if _rows else []
 
 if len(_rows) != len(_gold_sents):
-    print(f"[WARN] ATE CSV có {len(_rows)} dòng, test.apc có {len(_gold_sents)} entries — không align được theo index")
+    print(f"[WARN] ATE CSV có {len(_rows)} dòng, test.apc có {len(_gold_sents)} entries "
+          f"— không align được theo index, dùng nguyên file gốc")
 else:
     _aligned = [dict(r, sentence=_gold_sents[i]) for i, r in enumerate(_rows)]
     _changed  = sum(1 for o, n in zip(_rows, _aligned) if o["sentence"] != n["sentence"])
-    _fd, _tmp_path = _tmp.mkstemp(suffix=".csv", prefix="ate_align_")
-    _os.close(_fd)
-    with open(_tmp_path, "w", newline="", encoding="utf-8") as _fout:
-        _w = _csv.DictWriter(_fout, fieldnames=_fieldnames)
-        _w.writeheader()
-        _w.writerows(_aligned)
-    ATE_CSV = Path(_tmp_path)
-    print(f"[align] {_changed} câu đã được thay bằng sentence từ test.apc theo thứ tự dòng")
+    if _changed:
+        _fd, _tmp_path = _tmp.mkstemp(suffix=".csv", prefix="ate_align_")
+        _os.close(_fd)
+        with open(_tmp_path, "w", newline="", encoding="utf-8") as _fout:
+            _w = _csv.DictWriter(_fout, fieldnames=_fieldnames)
+            _w.writeheader()
+            _w.writerows(_aligned)
+        ATE_CSV = Path(_tmp_path)
+        print(f"[align] {_changed} câu đã được thay bằng sentence từ test.apc theo thứ tự dòng")
 
-# ─── Patch eval_joint_triplet trước khi import main() ────────────────────────
-
-import importlib.util as _ilu
-import time as _time
+# ─── Load eval_joint_triplet và override config ───────────────────────────────
 
 _spec = _ilu.spec_from_file_location(
     "eval_joint_triplet",
@@ -112,32 +108,6 @@ _eval_mod.PRETRAINED  = PRETRAINED
 _eval_mod.RUNS_DIR    = RUNS_DIR
 _eval_mod.ATE_CSV     = ATE_CSV
 _eval_mod.OUT_CSV     = ROOT / "runs_ate" / f"eval_joint_triplet_{MODEL_TYPE.upper()}.csv"
-
-# ─── Wrap predict_triplets để đo thời gian inference ─────────────────────────
-
-_infer_times: dict = {}
-_orig_predict = _eval_mod.predict_triplets
-
-def _timed_predict(model, tokenizer, ate_preds, cat_map, cat_labels):
-    _t0 = _time.perf_counter()
-    result = _orig_predict(model, tokenizer, ate_preds, cat_map, cat_labels)
-    _elapsed = _time.perf_counter() - _t0
-    num_terms = sum(len(v) for v in ate_preds.values())
-    num_sents = len(ate_preds)
-    _infer_times[id(model)] = {
-        "elapsed_sec": _elapsed,
-        "num_sentences": num_sents,
-        "num_terms": num_terms,
-        "ms_per_sent": _elapsed / num_sents * 1000 if num_sents else 0,
-        "ms_per_term": _elapsed / num_terms * 1000 if num_terms else 0,
-    }
-    print(f"  Inference time : {_elapsed:.3f}s  "
-          f"({_elapsed/num_sents*1000:.1f} ms/sent, "
-          f"{_elapsed/num_terms*1000:.1f} ms/term)  "
-          f"[{num_sents} sents, {num_terms} terms]")
-    return result
-
-_eval_mod.predict_triplets = _timed_predict
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
 

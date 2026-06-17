@@ -401,8 +401,8 @@ Hoặc dùng ! prefix trong Claude Code:
 
 
 
-# Dùng file mặc định (runs_ate/test_ate_predictions.csv)
-python experiments/eval_joint_triplet_run.py --model-type bert
+# T5 (mặc định)
+python experiments/eval_results.py
 
-# Chỉ định file ATE tuỳ ý
-python experiments/eval_joint_triplet_run.py --model-type bert --ate-csv runs_ate/my_predictions.csv
+# Bert
+python experiments/eval_results.py --model-type bert
