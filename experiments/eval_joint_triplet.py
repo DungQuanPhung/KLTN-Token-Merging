@@ -213,7 +213,11 @@ def predict_triplets(
     cat_map: Dict[str, int],
     cat_labels: List[str],
 ) -> Dict[str, Set[Tuple[str, str, str]]]:
-    """Return {sentence: {(term, cat, sent), ...}} from joint model predictions."""
+    """Return {sentence: {(term, cat, sent), ...}} from joint model predictions.
+
+    End-to-end: dùng TOÀN BỘ ATE predicted term, không lọc theo gold.
+    Mỗi predicted term → 1 triplet để so trực tiếp với gold (term sai bị tính FP).
+    """
     id2cat   = {i: lbl for lbl, i in cat_map.items()}
     results: Dict[str, Set[Tuple[str, str, str]]] = {}
 
@@ -259,6 +263,70 @@ def predict_triplets(
             ))
 
     return results
+
+
+# ─── Oracle (upper-bound): joint head trên GOLD aspect term ──────────────────
+
+def oracle_metrics(
+    model: nn.Module,
+    tokenizer,
+    apc_path: Path,
+    cat_map: Dict[str, int],
+    cat_labels: List[str],
+) -> Dict[str, float]:
+    """Oracle upper-bound: chạy joint head trên GOLD aspect term (bỏ qua ATE).
+
+    Vì aspect term LUÔN đúng, metric này đo riêng chất lượng tầng phân loại
+    (category + sentiment), không pha lẫn lỗi của ATE. Đây là cận trên cho
+    end-to-end triplet F1 — phục vụ error analysis: bao nhiêu lỗi triplet đến
+    từ ATE (term sai) vs từ tầng phân loại.
+
+    Term luôn đúng nên với mỗi gold triplet có đúng 1 prediction → precision =
+    recall = accuracy; báo cáo accuracy cho category, sentiment và joint (cả hai).
+    """
+    id2cat = {i: lbl for lbl, i in cat_map.items()}
+
+    # Mỗi gold triplet = 1 sample (sentence, gold_term, gold_cat, gold_sent)
+    flat: List[Tuple[str, str, str, str]] = []
+    for s in parse_apc_file(str(apc_path)):
+        flat.append((
+            s["text"],
+            s["aspect_term"],
+            s["aspect_category"].strip().upper(),
+            s["sentiment"].strip().lower(),
+        ))
+
+    n = len(flat)
+    cat_ok = sent_ok = both_ok = 0
+
+    for start in range(0, n, BATCH_SIZE):
+        chunk = flat[start : start + BATCH_SIZE]
+        samples = [
+            tokenize_single(text, term, tokenizer, MAX_SEQ_LEN)
+            for text, term, _, _ in chunk
+        ]
+        ids  = torch.stack([s["input_ids"]      for s in samples]).to(DEVICE)
+        attn = torch.stack([s["attention_mask"] for s in samples]).to(DEVICE)
+        lcf  = torch.stack([s["lcf_vec"]         for s in samples]).to(DEVICE)
+
+        with torch.no_grad():
+            out = model(ids, attn, lcf)
+        pcat  = out["aspect_cat_logits"].argmax(-1).cpu().tolist()
+        psent = out["sentiment_logits"].argmax(-1).cpu().tolist()
+
+        for (_, _, gcat, gsent), cp, sp in zip(chunk, pcat, psent):
+            c = (id2cat[cp].upper()          == gcat)
+            s = (SENTIMENT_LABELS[sp].lower() == gsent)
+            cat_ok  += int(c)
+            sent_ok += int(s)
+            both_ok += int(c and s)
+
+    return {
+        "n":          n,
+        "cat_acc":    round(cat_ok  / max(n, 1) * 100, 2),
+        "sent_acc":   round(sent_ok / max(n, 1) * 100, 2),
+        "joint_acc":  round(both_ok / max(n, 1) * 100, 2),
+    }
 
 
 # ─── Micro P/R/F1 over all sentences ─────────────────────────────────────────
@@ -437,6 +505,11 @@ def main() -> None:
         for cls, f1_cls in macro["per_class"].items():
             print(f"    {cls:<22}: {f1_cls:.2f}%")
 
+        oracle = oracle_metrics(model, tokenizer, TEST_APC, cat_map, cat_labels)
+        print(f"  Oracle (gold term, upper bound) → "
+              f"Cat-Acc={oracle['cat_acc']}%  Sent-Acc={oracle['sent_acc']}%  "
+              f"Joint-Acc={oracle['joint_acc']}%  (n={oracle['n']})")
+
         rows.append({
             "config":            config_name,
             "train_time_sec":    train_time_sec,
@@ -450,6 +523,9 @@ def main() -> None:
             "macro_precision":   macro["precision"],
             "macro_recall":      macro["recall"],
             "macro_f1":          macro["f1"],
+            "oracle_cat_acc":    oracle["cat_acc"],
+            "oracle_sent_acc":   oracle["sent_acc"],
+            "oracle_joint_acc":  oracle["joint_acc"],
             "tp":                m["tp"],
             "fp":                m["fp"],
             "fn":                m["fn"],
@@ -469,6 +545,7 @@ def main() -> None:
     print(f"  {'Config':<26}  {'Train(s)':>8}  {'Infer(s)':>8}  {'ATE-F1':>8}"
           f"  {'Micro-P':>8}  {'Micro-R':>8}  {'Micro-F1':>9}"
           f"  {'Macro-P':>8}  {'Macro-R':>8}  {'Macro-F1':>9}"
+          f"  {'OrcCat':>8}  {'OrcSent':>8}  {'OrcJoint':>9}"
           f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
     print(f"{'─' * W}")
     for row in rows:
@@ -485,6 +562,9 @@ def main() -> None:
             f"  {row['macro_precision']:>7.2f}%"
             f"  {row['macro_recall']:>7.2f}%"
             f"  {row['macro_f1']:>8.2f}%"
+            f"  {row['oracle_cat_acc']:>7.2f}%"
+            f"  {row['oracle_sent_acc']:>7.2f}%"
+            f"  {row['oracle_joint_acc']:>8.2f}%"
             f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
         )
     print(f"{'═' * W}")
@@ -493,6 +573,8 @@ def main() -> None:
     print("  ATE-F1    : F1 trích xuất aspect term")
     print("  Micro-F1  : micro F1 triplet — phản ánh overall performance")
     print("  Macro-F1  : macro F1 triplet theo category — nhạy với minority class")
+    print("  Orc*      : ORACLE trên gold term (upper bound) — Cat/Sent/Joint accuracy")
+    print("              đo riêng tầng phân loại, KHÔNG tính lỗi của ATE")
     print(f"{'═' * W}")
 
     # ── Save CSV ───────────────────────────────────────────────────────────────
@@ -505,6 +587,7 @@ def main() -> None:
                         "ate_f1", "ate_precision", "ate_recall",
                         "micro_precision", "micro_recall", "micro_f1",
                         "macro_precision", "macro_recall", "macro_f1",
+                        "oracle_cat_acc", "oracle_sent_acc", "oracle_joint_acc",
                         "tp", "fp", "fn"] + all_cat_keys,
             extrasaction="ignore",
         )
