@@ -355,13 +355,19 @@ def ate_metrics(
     all_sentences: List[str],
 ) -> Dict[str, float]:
     total_tp = total_fp = total_fn = 0
+    visited: set = set()
     for sent in all_sentences:
+        visited.add(sent)
         gold_terms = {t for t, _, _ in gold_by_sent.get(sent, set())}
         pred_terms = {_norm_term(t) for t in ate_preds.get(sent, [])}
         tp = len(gold_terms & pred_terms)
         total_tp += tp
         total_fp += len(pred_terms) - tp
         total_fn += len(gold_terms) - tp
+    # Count FP for predicted sentences that had no gold entry (key mismatch guard)
+    for sent, terms in ate_preds.items():
+        if sent not in visited:
+            total_fp += len({_norm_term(t) for t in terms if t.strip()})
     p  = total_tp / max(total_tp + total_fp, 1)
     r  = total_tp / max(total_tp + total_fn, 1)
     f1 = 2 * p * r / max(p + r, 1e-9)
