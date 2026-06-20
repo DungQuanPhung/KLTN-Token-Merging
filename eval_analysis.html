@@ -1,0 +1,444 @@
+<title>ABSA Triplet Evaluation — Pipeline Analysis</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; padding: 2rem 1rem; max-width: 1100px; margin: 0 auto; line-height: 1.6; }
+
+  h1 { font-size: 1.5rem; font-weight: 700; color: #f8fafc; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.1rem; font-weight: 600; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase; margin: 2.5rem 0 1rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.4rem; }
+  h3 { font-size: 0.95rem; font-weight: 600; color: #cbd5e1; margin: 1rem 0 0.5rem; }
+
+  .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
+
+  /* Pipeline diagram */
+  .pipeline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+  @media (max-width: 700px) { .pipeline-grid { grid-template-columns: 1fr; } }
+
+  .pipeline-box { background: #1e293b; border-radius: 10px; padding: 1.25rem; border: 1px solid #334155; }
+  .pipeline-box.a { border-top: 3px solid #3b82f6; }
+  .pipeline-box.b { border-top: 3px solid #8b5cf6; }
+  .pipeline-title { font-weight: 700; font-size: 1rem; margin-bottom: 0.75rem; }
+  .pipeline-title.a { color: #60a5fa; }
+  .pipeline-title.b { color: #a78bfa; }
+
+  .step { display: flex; align-items: flex-start; gap: 0.6rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+  .step-num { min-width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .step-num.a { background: #1d4ed8; color: #bfdbfe; }
+  .step-num.b { background: #6d28d9; color: #ddd6fe; }
+  .step-text { color: #cbd5e1; }
+  .step-text strong { color: #e2e8f0; }
+  .step-text em { color: #94a3b8; font-style: normal; font-size: 0.8rem; }
+
+  /* Metric formula */
+  .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 600px) { .metric-row { grid-template-columns: 1fr; } }
+
+  .metric-card { background: #1e293b; border-radius: 8px; padding: 1rem; border: 1px solid #334155; }
+  .metric-name { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
+  .metric-formula { font-family: 'Courier New', monospace; font-size: 0.85rem; color: #f59e0b; }
+  .metric-desc { font-size: 0.78rem; color: #64748b; margin-top: 0.4rem; }
+
+  /* Main comparison table */
+  .table-wrap { overflow-x: auto; margin-bottom: 1.5rem; border-radius: 10px; border: 1px solid #334155; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead th { background: #1e293b; color: #94a3b8; font-weight: 600; padding: 0.65rem 0.75rem; text-align: center; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #334155; white-space: nowrap; }
+  thead th.left { text-align: left; }
+  tbody td { padding: 0.55rem 0.75rem; text-align: center; border-bottom: 1px solid #0f172a; }
+  tbody td.left { text-align: left; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #1e293b40; }
+
+  .tag-a { background: #1d4ed820; color: #60a5fa; border: 1px solid #1d4ed840; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.72rem; font-weight: 600; }
+  .tag-b { background: #6d28d920; color: #a78bfa; border: 1px solid #6d28d940; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.72rem; font-weight: 600; }
+
+  .val-hi { color: #34d399; font-weight: 700; }
+  .val-lo { color: #f87171; }
+  .val-mid { color: #fbbf24; }
+  .val-neutral { color: #94a3b8; }
+
+  .best-row { background: #14532d20 !important; }
+  .best-row td { border-color: #14532d40 !important; }
+
+  /* Error analysis */
+  .err-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 600px) { .err-grid { grid-template-columns: 1fr; } }
+
+  .err-card { background: #1e293b; border-radius: 8px; padding: 1rem; border: 1px solid #334155; }
+  .err-card h3 { font-size: 0.85rem; margin-bottom: 0.75rem; }
+
+  .bar-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem; font-size: 0.78rem; }
+  .bar-label { min-width: 42px; color: #64748b; text-align: right; }
+  .bar-track { flex: 1; background: #0f172a; border-radius: 3px; height: 14px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; display: flex; align-items: center; padding-left: 4px; font-size: 0.68rem; font-weight: 700; white-space: nowrap; }
+  .bar-val { min-width: 44px; color: #e2e8f0; text-align: right; font-size: 0.78rem; }
+
+  /* Oracle analysis */
+  .oracle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
+  @media (max-width: 600px) { .oracle-grid { grid-template-columns: 1fr; } }
+  .oracle-card { background: #1e293b; border-radius: 8px; padding: 1rem; border: 1px solid #334155; text-align: center; }
+  .oracle-val { font-size: 1.6rem; font-weight: 800; color: #34d399; }
+  .oracle-lbl { font-size: 0.73rem; color: #64748b; margin-top: 0.2rem; }
+
+  /* Per-class F1 table */
+  .per-class-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+  @media (max-width: 600px) { .per-class-grid { grid-template-columns: 1fr; } }
+
+  .insight-box { background: #0c1a2e; border-left: 3px solid #3b82f6; border-radius: 0 8px 8px 0; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .insight-box.warn { border-color: #f59e0b; }
+  .insight-box.good { border-color: #34d399; }
+  .insight-title { font-weight: 700; font-size: 0.85rem; color: #93c5fd; margin-bottom: 0.35rem; }
+  .insight-box.warn .insight-title { color: #fcd34d; }
+  .insight-box.good .insight-title { color: #6ee7b7; }
+  .insight-body { font-size: 0.82rem; color: #94a3b8; }
+  .insight-body strong { color: #e2e8f0; }
+
+  code { font-family: 'Courier New', monospace; background: #0f172a; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.8rem; color: #e879f9; }
+
+  .section-note { font-size: 0.78rem; color: #475569; margin-top: 0.5rem; }
+
+  .delta { font-size: 0.75rem; }
+  .delta.up { color: #34d399; }
+  .delta.dn { color: #f87171; }
+</style>
+
+<h1>ABSA Triplet Evaluation — Pipeline Analysis</h1>
+<p class="subtitle">So sánh chuẩn: Không có split LLM vs. Có split LLM cho bài toán Joint Triplet (aspect term, category, sentiment)</p>
+
+<h2>1. Hai Pipeline Được So Sánh</h2>
+
+<div class="pipeline-grid">
+  <div class="pipeline-box a">
+    <div class="pipeline-title a">Pipeline A — Không có Split LLM</div>
+    <div class="step"><span class="step-num a">1</span><span class="step-text"><strong>Input:</strong> câu gốc <code>test.apc</code> — 312 sentences, 312 gold triplets</span></div>
+    <div class="step"><span class="step-num a">2</span><span class="step-text"><strong>ATE:</strong> NER model (BERT/T5) chạy trên <em>full sentence</em> → trích xuất aspect terms</span></div>
+    <div class="step"><span class="step-num a">3</span><span class="step-text"><strong>Joint Head:</strong> <code>FastLcfBertMultiTask</code> nhận <em>(sentence, term)</em> → predict (category, sentiment)</span></div>
+    <div class="step"><span class="step-num a">4</span><span class="step-text"><strong>Gold match:</strong> theo <em>sentence text</em> từ <code>test.apc</code></span></div>
+    <div class="step"><span class="step-num a">✓</span><span class="step-text"><strong>Output:</strong> <code>eval_joint_triplet_BERT.csv</code></span></div>
+  </div>
+  <div class="pipeline-box b">
+    <div class="pipeline-title b">Pipeline B — Có Split LLM</div>
+    <div class="step"><span class="step-num b">1</span><span class="step-text"><strong>Input:</strong> <code>results.csv</code> — 312 entities, LLM tách thành <strong>612 units</strong> (avg 1.96 unit/entity, 174 entities bị tách)</span></div>
+    <div class="step"><span class="step-num b">2</span><span class="step-text"><strong>ATE:</strong> GAS T5 chạy trên từng <em>unit</em> (clause) → extract term</span></div>
+    <div class="step"><span class="step-num b">3</span><span class="step-text"><strong>Joint Head:</strong> <code>FastLcfBertMultiTask</code> nhận <em>(gold sentence, term)</em> → predict (category, sentiment)</span></div>
+    <div class="step"><span class="step-num b">4</span><span class="step-text"><strong>Gold match:</strong> theo <em>entity_id</em> từ <code>test_sentences_id.csv</code></span></div>
+    <div class="step"><span class="step-num b">✓</span><span class="step-text"><strong>Output:</strong> <code>eval_results_BERT.csv</code></span></div>
+  </div>
+</div>
+
+<div class="insight-box">
+  <div class="insight-title">Cùng gold set — so sánh hợp lệ</div>
+  <div class="insight-body">Cả hai pipeline đều đánh giá trên <strong>312 gold triplets</strong> — <code>test.apc</code> và <code>test_sentences_id.csv</code> là hai format của cùng một test set. TP + FN = 312 cho cả hai. So sánh Micro P/R/F1 là <strong>trực tiếp và chuẩn</strong>.</div>
+</div>
+
+<h2>2. Metric Định Nghĩa (Chuẩn ABSA Triplet)</h2>
+
+<div class="metric-row">
+  <div class="metric-card">
+    <div class="metric-name">TP (True Positive)</div>
+    <div class="metric-formula">predicted ∩ gold</div>
+    <div class="metric-desc">Triplet predict đúng cả 3: term + category + sentiment phải khớp chính xác</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-name">Micro Precision</div>
+    <div class="metric-formula">TP / (TP + FP)</div>
+    <div class="metric-desc">Tỉ lệ predict đúng trong tổng số predict. Phạt khi predict nhiều sai.</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-name">Micro Recall</div>
+    <div class="metric-formula">TP / (TP + FN)</div>
+    <div class="metric-desc">Tỉ lệ gold được tìm thấy. Phạt khi bỏ sót gold triplets.</div>
+  </div>
+</div>
+
+<h2>3. Kết Quả So Sánh Chính — BERT Encoder</h2>
+<p class="section-note">Tất cả config dùng cùng FastLcfBertMultiTask encoder + joint head. Phân biệt duy nhất là pipeline đầu vào.</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th class="left" rowspan="2">Config</th>
+      <th rowspan="2">Pipeline</th>
+      <th colspan="3" style="border-bottom:1px solid #1e3a5f;color:#60a5fa">ATE (Term Only)</th>
+      <th colspan="3" style="border-bottom:1px solid #1e3a5f;color:#34d399">Triplet Micro F1</th>
+      <th colspan="3" style="border-bottom:1px solid #1e3a5f;color:#fbbf24">Triplet Macro F1</th>
+      <th colspan="3" style="border-bottom:1px solid #334155;color:#94a3b8">Counts</th>
+    </tr>
+    <tr>
+      <th>P%</th><th>R%</th><th>F1%</th>
+      <th>P%</th><th>R%</th><th>F1%</th>
+      <th>P%</th><th>R%</th><th>F1%</th>
+      <th>TP</th><th>FP</th><th>FN</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="left"><code>baseline_balanced</code></td>
+      <td><span class="tag-a">No Split</span></td>
+      <td>78.85</td><td>78.85</td><td class="val-mid">78.85</td>
+      <td>69.55</td><td>69.55</td><td class="val-mid">69.55</td>
+      <td>53.32</td><td>45.43</td><td>48.32</td>
+      <td>217</td><td>95</td><td>95</td>
+    </tr>
+    <tr>
+      <td class="left"><code>bip_resize</code></td>
+      <td><span class="tag-a">No Split</span></td>
+      <td>78.85</td><td>78.85</td><td class="val-mid">78.85</td>
+      <td>68.59</td><td>68.59</td><td class="val-mid">68.59</td>
+      <td>56.32</td><td>45.54</td><td>48.88</td>
+      <td>214</td><td>98</td><td>98</td>
+    </tr>
+    <tr>
+      <td class="left"><code>lcf_attn_cdm_resize</code></td>
+      <td><span class="tag-a">No Split</span></td>
+      <td>78.85</td><td>78.85</td><td class="val-mid">78.85</td>
+      <td>69.23</td><td>69.23</td><td class="val-mid">69.23</td>
+      <td>60.01</td><td>55.03</td><td>56.88</td>
+      <td>216</td><td>96</td><td>96</td>
+    </tr>
+    <tr>
+      <td class="left"><code>lcf_seq_cdm_resize</code></td>
+      <td><span class="tag-a">No Split</span></td>
+      <td>78.85</td><td>78.85</td><td class="val-mid">78.85</td>
+      <td>69.87</td><td>69.87</td><td class="val-mid">69.87</td>
+      <td>52.76</td><td>47.58</td><td>49.48</td>
+      <td>218</td><td>94</td><td>94</td>
+    </tr>
+    <tr class="best-row">
+      <td class="left"><code>lcf_seq_cdw_resize</code> ★</td>
+      <td><span class="tag-a">No Split</span></td>
+      <td>78.85</td><td>78.85</td><td class="val-mid">78.85</td>
+      <td>70.19</td><td>70.19</td><td class="val-hi">70.19</td>
+      <td>55.51</td><td>48.79</td><td>50.59</td>
+      <td>219</td><td>93</td><td>93</td>
+    </tr>
+    <tr style="border-top: 2px solid #334155;">
+      <td class="left"><code>baseline_balanced</code></td>
+      <td><span class="tag-b">Split LLM</span></td>
+      <td class="val-neutral">—</td><td class="val-neutral">—</td><td class="val-neutral">—</td>
+      <td class="val-lo">42.23</td><td class="val-mid">71.47</td><td class="val-lo">53.10</td>
+      <td class="val-lo">35.82</td><td>48.89</td><td>40.27</td>
+      <td>223</td><td>305</td><td>89</td>
+    </tr>
+    <tr>
+      <td class="left"><code>bip_resize</code></td>
+      <td><span class="tag-b">Split LLM</span></td>
+      <td class="val-neutral">—</td><td class="val-neutral">—</td><td class="val-neutral">—</td>
+      <td class="val-lo">41.86</td><td class="val-mid">70.83</td><td class="val-lo">52.62</td>
+      <td class="val-lo">36.10</td><td>48.45</td><td>40.52</td>
+      <td>221</td><td>307</td><td>91</td>
+    </tr>
+    <tr>
+      <td class="left"><code>lcf_attn_cdm_resize</code></td>
+      <td><span class="tag-b">Split LLM</span></td>
+      <td class="val-neutral">—</td><td class="val-neutral">—</td><td class="val-neutral">—</td>
+      <td class="val-lo">41.86</td><td class="val-mid">70.83</td><td class="val-lo">52.62</td>
+      <td>43.34</td><td>57.72</td><td class="val-mid">48.53</td>
+      <td>221</td><td>307</td><td>91</td>
+    </tr>
+    <tr class="best-row" style="opacity:0.8">
+      <td class="left"><code>lcf_seq_cdm_resize</code> ★</td>
+      <td><span class="tag-b">Split LLM</span></td>
+      <td class="val-neutral">—</td><td class="val-neutral">—</td><td class="val-neutral">—</td>
+      <td class="val-lo">42.80</td><td class="val-mid">72.44</td><td class="val-lo">53.81</td>
+      <td class="val-lo">37.55</td><td>51.25</td><td>42.49</td>
+      <td>226</td><td>302</td><td>86</td>
+    </tr>
+    <tr>
+      <td class="left"><code>lcf_seq_cdw_resize</code></td>
+      <td><span class="tag-b">Split LLM</span></td>
+      <td class="val-neutral">—</td><td class="val-neutral">—</td><td class="val-neutral">—</td>
+      <td class="val-lo">42.61</td><td class="val-mid">72.12</td><td class="val-lo">53.57</td>
+      <td class="val-lo">37.11</td><td>51.57</td><td>42.38</td>
+      <td>225</td><td>303</td><td>87</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p class="section-note">★ = best config trong pipeline đó theo Micro F1 | ATE F1 = 78.85% (constant vì dùng cùng <code>test_ate_predictions.csv</code> cho Pipeline A)</p>
+
+<h2>4. Delta Giữa Hai Pipeline (Best vs Best)</h2>
+
+<div class="err-grid">
+  <div class="err-card">
+    <h3 style="color:#60a5fa">Micro Precision</h3>
+    <div class="bar-row">
+      <span class="bar-label">No Split</span>
+      <div class="bar-track"><div class="bar-fill" style="width:70.19%;background:#3b82f6;color:#fff">70.19%</div></div>
+      <span class="bar-val" style="color:#34d399">70.19%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Split LLM</span>
+      <div class="bar-track"><div class="bar-fill" style="width:42.80%;background:#f87171;color:#fff">42.80%</div></div>
+      <span class="bar-val" style="color:#f87171">42.80%</span>
+    </div>
+    <div style="font-size:0.78rem;color:#f87171;margin-top:0.5rem">▼ −27.39 pp — LLM tạo quá nhiều false positive terms</div>
+  </div>
+  <div class="err-card">
+    <h3 style="color:#a78bfa">Micro Recall</h3>
+    <div class="bar-row">
+      <span class="bar-label">No Split</span>
+      <div class="bar-track"><div class="bar-fill" style="width:70.19%;background:#3b82f6;color:#fff">70.19%</div></div>
+      <span class="bar-val" style="color:#60a5fa">70.19%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Split LLM</span>
+      <div class="bar-track"><div class="bar-fill" style="width:72.44%;background:#8b5cf6;color:#fff">72.44%</div></div>
+      <span class="bar-val" style="color:#a78bfa">72.44%</span>
+    </div>
+    <div style="font-size:0.78rem;color:#34d399;margin-top:0.5rem">▲ +2.25 pp — tách clause giúp ATE tìm thêm vài gold terms</div>
+  </div>
+  <div class="err-card">
+    <h3 style="color:#fbbf24">Micro F1 (Primary Metric)</h3>
+    <div class="bar-row">
+      <span class="bar-label">No Split</span>
+      <div class="bar-track"><div class="bar-fill" style="width:70.19%;background:#34d399;color:#000">70.19%</div></div>
+      <span class="bar-val" style="color:#34d399">70.19%</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Split LLM</span>
+      <div class="bar-track"><div class="bar-fill" style="width:53.81%;background:#f87171;color:#fff">53.81%</div></div>
+      <span class="bar-val" style="color:#f87171">53.81%</span>
+    </div>
+    <div style="font-size:0.78rem;color:#f87171;margin-top:0.5rem">▼ −16.38 pp — precision collapse áp đảo recall gain</div>
+  </div>
+  <div class="err-card">
+    <h3 style="color:#fbbf24">False Positive Analysis</h3>
+    <div class="bar-row">
+      <span class="bar-label">No Split</span>
+      <div class="bar-track"><div class="bar-fill" style="width:23%;background:#3b82f6;color:#fff">93</div></div>
+      <span class="bar-val" style="color:#60a5fa">93 FP</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Split LLM</span>
+      <div class="bar-track"><div class="bar-fill" style="width:75%;background:#f87171;color:#fff">302–307</div></div>
+      <span class="bar-val" style="color:#f87171">302 FP</span>
+    </div>
+    <div style="font-size:0.78rem;color:#f87171;margin-top:0.5rem">×3.25 — mỗi entity có 612/312 ≈ 1.96 unit nên tạo ra ~2× terms, phần lớn là FP</div>
+  </div>
+</div>
+
+<h2>5. Oracle Analysis — Chất Lượng Tầng Phân Loại</h2>
+<p class="section-note">Oracle: chạy joint head trên gold aspect term (bỏ qua ATE hoàn toàn). Đây là upper bound của tầng phân loại, đo riêng category + sentiment head.</p>
+
+<div class="oracle-grid">
+  <div class="oracle-card">
+    <div class="oracle-val">90.38%</div>
+    <div class="oracle-lbl">Category Accuracy<br><span style="color:#475569">Oracle — gold term input</span></div>
+  </div>
+  <div class="oracle-card">
+    <div class="oracle-val">96.47%</div>
+    <div class="oracle-lbl">Sentiment Accuracy<br><span style="color:#475569">Oracle — gold term input</span></div>
+  </div>
+  <div class="oracle-card">
+    <div class="oracle-val">86.86%</div>
+    <div class="oracle-lbl">Joint Accuracy (Cat ∩ Sent)<br><span style="color:#475569">Best config: lcf_seq_cdw_resize</span></div>
+  </div>
+</div>
+
+<div class="insight-box good">
+  <div class="insight-title">Kết luận Oracle</div>
+  <div class="insight-body">
+    Tầng phân loại (joint head) đạt <strong>86.86% joint accuracy</strong> khi biết trước exact term.
+    Gap từ oracle (86.86%) xuống triplet F1 (70.19%) là <strong>16.67 pp</strong> — đây là phần lỗi đến từ ATE (term extraction sai).
+    Phân tích lỗi: ATE F1 = 78.85% → FN/FP do ATE chiếm phần lớn gap.
+  </div>
+</div>
+
+<h2>6. Per-Class F1 — Best Config Mỗi Pipeline</h2>
+<p class="section-note">Macro F1 per (category, sentiment) class. Cho thấy sự phân bố lỗi theo class.</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th class="left">Class (Category_Sentiment)</th>
+      <th>No Split<br><span style="font-weight:400;color:#475569">lcf_seq_cdw_resize</span></th>
+      <th>Split LLM<br><span style="font-weight:400;color:#475569">lcf_seq_cdm_resize</span></th>
+      <th>Delta (Δ)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="left">AMENITY_negative</td><td>40.00</td><td>21.05</td><td class="val-lo">−18.95</td></tr>
+    <tr><td class="left">AMENITY_neutral</td><td class="val-hi">100.00</td><td>85.71</td><td class="val-lo">−14.29</td></tr>
+    <tr><td class="left">AMENITY_positive</td><td>77.52</td><td>57.31</td><td class="val-lo">−20.21</td></tr>
+    <tr><td class="left">BRANDING_neutral</td><td class="val-lo">0.00</td><td class="val-lo">0.00</td><td class="val-neutral">0.00</td></tr>
+    <tr><td class="left">BRANDING_positive</td><td>57.14</td><td>50.00</td><td class="val-lo">−7.14</td></tr>
+    <tr><td class="left">EXPERIENCE_negative</td><td class="val-lo">0.00</td><td class="val-lo">0.00</td><td class="val-neutral">0.00</td></tr>
+    <tr><td class="left">EXPERIENCE_positive</td><td>63.16</td><td>53.52</td><td class="val-lo">−9.64</td></tr>
+    <tr><td class="left">FACILITY_negative</td><td>47.62</td><td>40.00</td><td class="val-lo">−7.62</td></tr>
+    <tr><td class="left">FACILITY_neutral</td><td class="val-lo">0.00</td><td class="val-lo">0.00</td><td class="val-neutral">0.00</td></tr>
+    <tr><td class="left">FACILITY_positive</td><td>65.56</td><td>47.62</td><td class="val-lo">−17.94</td></tr>
+    <tr><td class="left">LOYALTY_positive</td><td>76.92</td><td>76.92</td><td class="val-neutral">0.00</td></tr>
+    <tr><td class="left">SERVICE_negative</td><td>50.00</td><td>57.14</td><td class="val-hi">+7.14</td></tr>
+    <tr><td class="left">SERVICE_positive</td><td>79.77</td><td>63.06</td><td class="val-lo">−16.71</td></tr>
+    <tr style="border-top:2px solid #334155;font-weight:700">
+      <td class="left">Macro F1 (avg)</td>
+      <td class="val-hi">50.59</td>
+      <td class="val-lo">42.49</td>
+      <td class="val-lo">−8.10</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p class="section-note">Chỉ 1/13 class được cải thiện (SERVICE_negative). Tất cả class còn lại đều giảm hoặc giữ nguyên khi dùng Split LLM.</p>
+
+<h2>7. Insights Cho Paper</h2>
+
+<div class="insight-box warn">
+  <div class="insight-title">Tại sao Split LLM tệ hơn?</div>
+  <div class="insight-body">
+    LLM tách 312 câu gốc thành <strong>612 units</strong> (1.96×). GAS T5 ATE chạy trên từng unit nhỏ nên extract nhiều hơn — nhưng phần lớn là spurious terms. Kết quả: FP tăng gấp 3× (93 → 302), recall chỉ cải thiện nhẹ (+2.25 pp), dẫn đến F1 thấp hơn 16.38 pp. Joint head vẫn nhận <em>full sentence</em> (không phải unit), nên LCF contextual features không được hưởng lợi từ việc tách clause.
+  </div>
+</div>
+
+<div class="insight-box">
+  <div class="insight-title">Cách viết trong paper (Experimental Setup)</div>
+  <div class="insight-body">
+    Dùng <strong>Micro F1</strong> làm primary metric (chuẩn ABSA triplet evaluation, e.g., ASTE-D, SpanASTE).
+    Report thêm Macro F1 để phản ánh minority class. Oracle metrics để tách biệt lỗi ATE vs lỗi phân loại.
+    Nên trình bày bảng so sánh với 3 nhóm: <em>(i) ATE-only F1</em>, <em>(ii) End-to-end Triplet F1 (no split)</em>, <em>(iii) End-to-end Triplet F1 (split LLM)</em>.
+  </div>
+</div>
+
+<div class="insight-box good">
+  <div class="insight-title">Kết luận cho paper</div>
+  <div class="insight-body">
+    <strong>Pipeline không split LLM đạt triplet Micro F1 = 70.19%</strong> (best: <code>lcf_seq_cdw_resize</code>),
+    cao hơn pipeline split LLM <strong>16.38 pp</strong> (53.81%).
+    Dù split LLM tăng recall nhẹ (+2.25 pp), precision sụp đổ (70.19% → 42.80%) do hallucinated/over-extracted terms.
+    Oracle analysis xác nhận joint head chất lượng cao (86.86% joint accuracy) — bottleneck là ATE (78.85% F1).
+  </div>
+</div>
+
+<h2>8. Bảng Paper-Ready (Copy vào LaTeX)</h2>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th class="left">Method / Config</th>
+      <th>ATE F1</th>
+      <th>Triplet P</th>
+      <th>Triplet R</th>
+      <th>Triplet F1</th>
+      <th>Macro F1</th>
+      <th>Oracle-Joint</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="left" colspan="7" style="color:#475569;font-style:italic;font-size:0.78rem;padding:0.4rem 0.75rem">Pipeline A: No LLM Split (ATE on full sentence)</td></tr>
+    <tr><td class="left">FastLCF + Baseline</td><td>78.85</td><td>69.55</td><td>69.55</td><td>69.55</td><td>48.32</td><td>86.54</td></tr>
+    <tr><td class="left">FastLCF + Bip+Resize</td><td>78.85</td><td>68.59</td><td>68.59</td><td>68.59</td><td>48.88</td><td>86.86</td></tr>
+    <tr><td class="left">FastLCF + LCF-Attn+CDM+Resize</td><td>78.85</td><td>69.23</td><td>69.23</td><td>69.23</td><td>56.88</td><td>86.54</td></tr>
+    <tr><td class="left">FastLCF + LCF-Seq+CDM+Resize</td><td>78.85</td><td>69.87</td><td>69.87</td><td>69.87</td><td>49.48</td><td>86.86</td></tr>
+    <tr class="best-row"><td class="left"><strong>FastLCF + LCF-Seq+CDW+Resize ★</strong></td><td><strong>78.85</strong></td><td><strong>70.19</strong></td><td><strong>70.19</strong></td><td class="val-hi"><strong>70.19</strong></td><td><strong>50.59</strong></td><td><strong>86.86</strong></td></tr>
+    <tr><td class="left" colspan="7" style="color:#475569;font-style:italic;font-size:0.78rem;padding:0.4rem 0.75rem">Pipeline B: With LLM Split (GAS T5 ATE on clause units)</td></tr>
+    <tr><td class="left">FastLCF + Baseline</td><td>—</td><td>42.23</td><td>71.47</td><td>53.10</td><td>40.27</td><td>—</td></tr>
+    <tr><td class="left">FastLCF + Bip+Resize</td><td>—</td><td>41.86</td><td>70.83</td><td>52.62</td><td>40.52</td><td>—</td></tr>
+    <tr><td class="left">FastLCF + LCF-Attn+CDM+Resize</td><td>—</td><td>41.86</td><td>70.83</td><td>52.62</td><td>48.53</td><td>—</td></tr>
+    <tr class="best-row" style="opacity:0.75"><td class="left"><strong>FastLCF + LCF-Seq+CDM+Resize ★</strong></td><td>—</td><td>42.80</td><td>72.44</td><td class="val-lo"><strong>53.81</strong></td><td>42.49</td><td>—</td></tr>
+    <tr><td class="left">FastLCF + LCF-Seq+CDW+Resize</td><td>—</td><td>42.61</td><td>72.12</td><td class="val-lo">53.57</td><td>42.38</td><td>—</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="section-note">★ = best per pipeline | Oracle-Joint = joint accuracy khi dùng gold aspect term (upper bound phân loại) | — = không đo (khác ATE method)</p>

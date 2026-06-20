@@ -229,6 +229,49 @@ for eid in sorted(units_by_id.keys()):
 
 print(f"\n  {len(flat_pairs)} (entity_id, sentence, term) pairs → joint model")
 
+# ─── ATE F1: GAS T5 extracted terms vs gold terms per entity ─────────────────
+# Tập hợp tất cả terms được extract từ tất cả units của mỗi entity.
+# Đây là ATE metric tương đương ate_metrics() trong eval_joint_triplet.py
+# nhưng keyed by entity_id thay vì sentence text.
+
+pred_terms_by_id: Dict[int, Set[str]] = defaultdict(set)
+for eid, _, term in flat_pairs:
+    pred_terms_by_id[eid].add(_norm_term(term))
+
+
+def _ate_f1_by_id(
+    gold_map: "Dict[int, Set]",
+    pred_map: "Dict[int, Set[str]]",
+    ids: "List[int]",
+) -> "Dict[str, float]":
+    """Term-level micro P/R/F1 cho split-LLM pipeline, keyed by entity_id.
+
+    Gold terms  = {norm(aspect_term) for (term,cat,sent) in gold_map[eid]}
+    Pred terms  = union của tất cả terms GAS T5 extract từ mọi unit của entity.
+    Exact-match (sau normalisation): tp = |gold_terms ∩ pred_terms|.
+    """
+    total_tp = total_fp = total_fn = 0
+    for eid in ids:
+        gold_terms = {_norm_term(t) for t, _, _ in gold_map.get(eid, set())}
+        pred_terms = pred_map.get(eid, set())
+        tp          = len(gold_terms & pred_terms)
+        total_tp   += tp
+        total_fp   += len(pred_terms) - tp
+        total_fn   += len(gold_terms) - tp
+    p  = total_tp / max(total_tp + total_fp, 1)
+    r  = total_tp / max(total_tp + total_fn, 1)
+    f1 = 2 * p * r / max(p + r, 1e-9)
+    return {
+        "precision": round(p  * 100, 2),
+        "recall":    round(r  * 100, 2),
+        "f1":        round(f1 * 100, 2),
+    }
+
+
+ate_m = _ate_f1_by_id(gold_by_id, pred_terms_by_id, all_ids)
+print(f"\nATE (GAS T5 on units, term only): "
+      f"P={ate_m['precision']}%  R={ate_m['recall']}%  F1={ate_m['f1']}%")
+
 # ─── Step 2: Joint model — predict category + sentiment ──────────────────────
 
 print(f"\nStep 2 — Joint model ({MODEL_TYPE.upper()}) inference")
@@ -304,23 +347,34 @@ for run_dir in run_dirs:
     hit = entity_hit_acc(gold_by_id, pred_by_id, all_ids)
     print(f"  Hit-Acc   → {hit['hits']}/{hit['total']} entity có ≥1 triplet đúng = {hit['accuracy']}%")
 
+    oracle = _ej.oracle_metrics(model, tokenizer, ROOT / "dataset" / "test.apc", cat_map, cat_labels)
+    print(f"  Oracle (gold term, upper bound) → "
+          f"Cat-Acc={oracle['cat_acc']}%  Sent-Acc={oracle['sent_acc']}%  "
+          f"Joint-Acc={oracle['joint_acc']}%  (n={oracle['n']})")
+
     rows_out.append({
-        "config":           config_name,
-        "train_time_sec":   train_time_sec,
-        "ate_time_sec":     round(ate_sec, 3),
-        "infer_time_sec":   round(infer_sec, 3),
-        "num_pairs":        len(flat_pairs),
-        "micro_precision":  m["precision"],
-        "micro_recall":     m["recall"],
-        "micro_f1":         m["f1"],
-        "macro_precision":  macro["precision"],
-        "macro_recall":     macro["recall"],
-        "macro_f1":         macro["f1"],
-        "hit_acc":          hit["accuracy"],
-        "hit_count":        hit["hits"],
-        "tp":               m["tp"],
-        "fp":               m["fp"],
-        "fn":               m["fn"],
+        "config":            config_name,
+        "train_time_sec":    train_time_sec,
+        "ate_time_sec":      round(ate_sec, 3),
+        "infer_time_sec":    round(infer_sec, 3),
+        "num_pairs":         len(flat_pairs),
+        "ate_f1":            ate_m["f1"],
+        "ate_precision":     ate_m["precision"],
+        "ate_recall":        ate_m["recall"],
+        "micro_precision":   m["precision"],
+        "micro_recall":      m["recall"],
+        "micro_f1":          m["f1"],
+        "macro_precision":   macro["precision"],
+        "macro_recall":      macro["recall"],
+        "macro_f1":          macro["f1"],
+        "oracle_cat_acc":    oracle["cat_acc"],
+        "oracle_sent_acc":   oracle["sent_acc"],
+        "oracle_joint_acc":  oracle["joint_acc"],
+        "hit_acc":           hit["accuracy"],
+        "hit_count":         hit["hits"],
+        "tp":                m["tp"],
+        "fp":                m["fp"],
+        "fn":                m["fn"],
         **{f"f1_{cls}": macro["per_class"].get(cls, 0.0)
            for cls in sorted(macro["per_class"])},
     })
@@ -331,33 +385,36 @@ for run_dir in run_dirs:
 
 # ─── Summary table ────────────────────────────────────────────────────────────
 
-W = 144
+W = 190
 print(f"\n{'═' * W}")
-print("EVAL RESULTS  (GAS T5 ATE → Joint model — term ∩ category ∩ sentiment)")
+print("EVAL RESULTS  (LLM split → GAS T5 ATE → Joint model — term ∩ category ∩ sentiment)")
 print(f"{'═' * W}")
 print(f"  {'Config':<26}  {'Train(s)':>8}  {'ATE(s)':>7}  {'Infer(s)':>8}  {'Pairs':>6}"
+      f"  {'ATE-F1':>8}"
       f"  {'Micro-P':>8}  {'Micro-R':>8}  {'Micro-F1':>9}"
       f"  {'Macro-P':>8}  {'Macro-R':>8}  {'Macro-F1':>9}"
+      f"  {'OrcCat':>8}  {'OrcSent':>8}  {'OrcJoint':>9}"
       f"  {'HitAcc':>8}"
       f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
 print(f"{'─' * W}")
 for row in rows_out:
     t = row["train_time_sec"]
+    time_str = f"{t:>7.1f}s" if t == t else "     N/A"
     print(
-        f"  {row['config']:<26}"
-        f"  {t:>7.1f}s" if t == t else f"  {'N/A':>8}",
-        end="",
-    )
-    print(
+        f"  {row['config']:<26}  {time_str}"
         f"  {row['ate_time_sec']:>6.2f}s"
         f"  {row['infer_time_sec']:>7.3f}s"
         f"  {row['num_pairs']:>6}"
+        f"  {row['ate_f1']:>7.2f}%"
         f"  {row['micro_precision']:>7.2f}%"
         f"  {row['micro_recall']:>7.2f}%"
         f"  {row['micro_f1']:>8.2f}%"
         f"  {row['macro_precision']:>7.2f}%"
         f"  {row['macro_recall']:>7.2f}%"
         f"  {row['macro_f1']:>8.2f}%"
+        f"  {row['oracle_cat_acc']:>7.2f}%"
+        f"  {row['oracle_sent_acc']:>7.2f}%"
+        f"  {row['oracle_joint_acc']:>8.2f}%"
         f"  {row['hit_acc']:>7.2f}%"
         f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
     )
@@ -365,9 +422,11 @@ print(f"{'═' * W}")
 print("  ATE(s)    : GAS T5 inference time trên tất cả units")
 print("  Infer(s)  : Joint model inference time")
 print("  Pairs     : số (sentence, term) pairs đưa vào joint model")
-print("  HitAcc    : % entity có ≥1 predicted triplet khớp gold (không phạt extra pred)")
-print("  Micro-F1  : micro F1 triplet (term ∩ category ∩ sentiment)")
+print("  ATE-F1    : F1 trích xuất term (GAS T5 trên units) — tương đương ate_metrics() trong eval_joint_triplet")
+print("  Micro-F1  : micro F1 triplet end-to-end (term ∩ category ∩ sentiment)")
 print("  Macro-F1  : macro F1 theo (category, sentiment) class")
+print("  Orc*      : ORACLE trên gold term (upper bound) — đo riêng tầng phân loại, KHÔNG tính lỗi ATE")
+print("  HitAcc    : % entity có ≥1 predicted triplet khớp gold (không phạt extra pred)")
 print(f"{'═' * W}")
 
 # ─── Save CSV ─────────────────────────────────────────────────────────────────
@@ -378,8 +437,11 @@ with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(
         f,
         fieldnames=["config", "train_time_sec", "ate_time_sec", "infer_time_sec",
-                    "num_pairs", "micro_precision", "micro_recall", "micro_f1",
+                    "num_pairs",
+                    "ate_f1", "ate_precision", "ate_recall",
+                    "micro_precision", "micro_recall", "micro_f1",
                     "macro_precision", "macro_recall", "macro_f1",
+                    "oracle_cat_acc", "oracle_sent_acc", "oracle_joint_acc",
                     "hit_acc", "hit_count",
                     "tp", "fp", "fn"] + all_cat_keys,
         extrasaction="ignore",
