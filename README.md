@@ -1,408 +1,554 @@
-# Thesis
+# Trích xuất Bộ ba Khía cạnh – Danh mục – Cực tính cho Đánh giá Khách sạn Tiếng Việt
 
-Dự án này chứa hai mô-đun chính:
-
-1. **ATE** (Aspect Term Extraction) dùng mô hình T5 để trích xuất term khía cạnh từ câu.
-2. **APC Joint** (Aspect Polarity Classification) dùng BERT multitask để dự đoán sentiment + category cho mỗi khía cạnh.
+**Khóa luận tốt nghiệp** · Phân tích Cảm xúc dựa trên Khía cạnh *(Aspect-Based Sentiment Analysis)*
 
 ---
 
-## Yêu cầu
+## Tổng quan
 
-- Python 3.8+ (hoặc tương đương môi trường conda/venv)
-- Thư viện Python trong `requirements.txt`
+Hệ thống giải quyết bài toán **Joint Triplet Extraction** trong Aspect-Based Sentiment Analysis (ABSA): từ một câu đánh giá khách sạn tiếng Việt, trích xuất toàn bộ bộ ba `(aspect_term, aspect_category, sentiment)`.
 
-Cài đặt:
+Hai kiến trúc chính được nghiên cứu và so sánh:
 
-```bash
-python -m pip install -r requirements.txt
+| Kiến trúc | Mô tả | Ưu điểm |
+|---|---|---|
+| **Joint** | ATE + APC huấn luyện cùng nhau, đánh giá end-to-end | Không có lỗi lan truyền giữa 2 bước |
+| **Pipeline** | ATE (T5) → APC (BERT), hai bước độc lập | Linh hoạt, dễ thay thế từng thành phần |
+
+Ngoài ra, hệ thống bao gồm:
+- **GAS** (Generative Aspect Sentiment): T5 sinh bộ ba trong một bước duy nhất
+- **UOS** (Unit Opinion Sentence): tách câu bằng LLM để thu hẹp ngữ cảnh cho APC
+- **Web Interface**: FastAPI backend + React frontend cho demo tương tác
+
+---
+
+## Cấu trúc thư mục
+
+```
+thesis_apc_baseline/
+│
+├── src/                            # Module ATE — T5 Aspect Term Extraction
+│   ├── train.py                    # CLI huấn luyện T5 ATE
+│   ├── model.py                    # T5AspectExtractor (T5ForConditionalGeneration wrapper)
+│   ├── trainer.py                  # ATETrainer: AMP, early stopping, cosine scheduler
+│   ├── dataset.py                  # ATEDataset + create_ate_dataloaders()
+│   ├── inference.py                # predict_aspects(): sinh + chuẩn hoá Levenshtein
+│   ├── metrics.py                  # Exact-match Precision / Recall / F1
+│   └── normalization.py            # n-gram Levenshtein normalization
+│
+├── models/
+│   └── fast_lcf_bert_multitask.py  # BERT đa nhiệm: LCF (CDM/CDW) + ToMe
+│
+├── experiments/                    # Scripts huấn luyện và đánh giá APC
+│   ├── run_joint_experiments.py    # Chạy tuần tự 12 cấu hình thực nghiệm
+│   ├── eval_joint_triplet.py       # Đánh giá bộ ba (aspect, category, sentiment)
+│   ├── run_ate_inference.py        # Infer ATE trên tập test → CSV
+│   └── eval_results.py             # Đánh giá ATE F1 (standalone)
+│
+├── gas/                            # GAS — Generative Aspect Sentiment (1 bước)
+│   ├── model.py                    # GasT5Model: T5 sinh bộ ba trực tiếp
+│   ├── train_gas.py, trainer.py, dataset.py, metrics.py, infer.py
+│
+├── uos/                            # UOS — Unit Opinion Sentence (tách câu LLM)
+│   ├── segmenter.py                # OllamaUOSSegmenter (Qwen 8B via Ollama)
+│   ├── prompt.py                   # Quy tắc ngôn ngữ SPLIT / DO NOT SPLIT
+│   ├── parsing.py, pipeline.py, metrics.py, records.py, validation.py
+│   ├── run_llm_uos_eval.py
+│   └── README.md
+│
+├── token_merging/                  # ToMe — Token Merging
+│   ├── tome_1d.py                  # bipartite / sequential_local / attention_weighted
+│   └── __init__.py
+│
+├── dataset/                        # Dữ liệu đánh giá khách sạn tiếng Việt
+│   ├── train.apc                   # 2 448 mẫu (9 792 dòng)
+│   ├── dev.apc                     # 304 mẫu
+│   ├── test.apc                    # 312 mẫu
+│   ├── test_sentences_id.csv       # Gold aspect terms cho tập test
+│   └── supplement/
+│       ├── negative.tsv            # Dữ liệu bổ sung cân bằng nhãn âm
+│       └── neutral.tsv             # Dữ liệu bổ sung cân bằng nhãn trung tính
+│
+├── checkpoints/
+│   └── gas_t5_ate/best/            # Checkpoint T5 ATE tốt nhất (~891 MB)
+│       ├── model.safetensors
+│       ├── config.json, generation_config.json
+│       └── tokenizer.json, tokenizer_config.json
+│
+├── checkpoints_gas/                # Checkpoint GAS T5 (joint generation)
+│
+├── runs_joint/                     # Output APC — mỗi config 1 thư mục con
+│   └── <config_name>/
+│       ├── best_model.pt           # Checkpoint tốt nhất (theo dev joint F1)
+│       └── meta.json               # Labels, flags, best_dev_f1, best_epoch
+│
+├── runs_ate/                       # Kết quả đánh giá
+│   ├── test_ate_predictions.csv
+│   ├── eval_joint_triplet_BERT.csv
+│   ├── eval_joint_triplet_T5.csv
+│   ├── eval_results_BERT.csv
+│   └── eval_results_T5.csv
+│
+├── server/
+│   └── app.py                      # FastAPI backend (REST API)
+│
+├── frontend/                       # React + Vite frontend
+│
+├── pipeline_inference.py           # PipelineInference: ATE → Clause Split → APC
+├── infer_aspect_term.py            # CLI infer APC cho một aspect term cụ thể
+├── dataset_utils.py                # ApcFileDataset: parser .apc + supplement
+├── ate_dataset_utils.py            # ATEDataset: parser .apc cho T5
+├── clause_splitting.py             # Tách câu: none / rulebase / uos
+└── requirements.txt
 ```
 
 ---
 
-## Cấu trúc chính của repo
+## Bài toán & Dữ liệu
 
-- `src/` : mã nguồn chung
-  - `src/train.py` : CLI train T5 ATE
-  - `src/dataset.py` : chuẩn bị dataloader cho ATE
-  - `src/model.py` : định nghĩa mô hình T5AspectExtractor
-  - `src/trainer.py` : training loop ATE
-  - `src/inference.py` : hàm dự đoán ATE
-- `experiments/` : joint APC multitask và các script thí nghiệm
-  - `experiments/run_joint_experiments.py` : training APC multitask
-- `pipeline_inference.py` : pipeline 2 bước ATE -> APC
-- `dataset/` : dữ liệu train/dev/test và supplement
-- `checkpoints/` : checkpoint ATE và các mô hình khác
-- `runs_joint/` : output training APC joint
+### Bài toán
+
+**Aspect-Based Sentiment Analysis (ABSA) — Joint Triplet Extraction**
+
+> Cho câu đánh giá $x$, tìm tập hợp $\mathcal{T} = \{(a_i, c_i, s_i)\}$ trong đó $a_i$ là aspect term, $c_i$ là aspect category, $s_i$ là cực tính.
+
+| Thành phần | Tập giá trị |
+|---|---|
+| `aspect_term` | Cụm từ xuất hiện trong câu |
+| `aspect_category` | `AMENITY` · `BRANDING` · `EXPERIENCE` · `FACILITY` · `LOYALTY` · `SERVICE` |
+| `sentiment` | `Positive` · `Negative` · `Neutral` |
+
+**Tiêu chí đánh giá:** Bộ ba `(aspect_term, category, sentiment)` được tính là **TP** khi và chỉ khi **cả ba thành phần** khớp chính xác với nhãn gold.
+
+### Định dạng file `.apc`
+
+Mỗi mẫu gồm **4 dòng liên tiếp**, cách nhau bằng dòng trắng:
+
+```
+$T$ rất chuyên nghiệp và chu đáo từ bộ phận nhà hàng, buồng phòng đến lễ tân.
+nhân viên phục vụ
+SERVICE
+Positive
+
+Phòng $T$ sạch sẽ và rộng rãi.
+ngủ
+FACILITY
+Positive
+```
+
+- **Dòng 1:** Câu gốc, `$T$` là placeholder cho aspect term
+- **Dòng 2:** Aspect term (thay thế `$T$` trong câu)
+- **Dòng 3:** Aspect category
+- **Dòng 4:** Sentiment label
+
+### Thống kê dữ liệu
+
+| Tập | Số mẫu | Ghi chú |
+|---|---|---|
+| Train | 2 448 | Thêm `supplement/negative.tsv` + `neutral.tsv` để cân bằng nhãn |
+| Dev | 304 | Dùng cho early stopping và chọn checkpoint |
+| Test | 312 | Đánh giá chính thức — **không dùng trong huấn luyện** |
+
+**Phân bố nhãn (train):** Mất cân bằng nghiêm trọng — `SERVICE_positive` chiếm tỉ lệ cao nhất, `BRANDING_neutral` và `FACILITY_neutral` rất hiếm → lý do sử dụng weighted loss và dữ liệu supplement.
 
 ---
 
-## 1. Train ATE (T5 Aspect Term Extraction)
+## Kiến trúc mô hình
 
-Để train ATE, chạy từ thư mục gốc repo:
+### 1. T5 Aspect Term Extraction (ATE)
+
+```
+Input:  "Phòng sạch sẽ, nhân viên nhiệt tình nhưng thang máy hay hỏng."
+          ↓
+   T5ForConditionalGeneration (t5-base)
+   Beam search: beam=4, max_len=64
+          ↓
+Output: "(phòng); (nhân viên); (thang máy)"
+          ↓
+   Levenshtein normalization → khớp về văn bản gốc
+          ↓
+Result: ["phòng", "nhân viên", "thang máy"]
+```
+
+**Đặc điểm:**
+- Sinh aspect terms dưới dạng chuỗi có cấu trúc, không cần BIO tagging
+- Chuẩn hoá đầu ra bằng Levenshtein n-gram matching để xử lý lỗi sinh
+- Checkpoint: `checkpoints/gas_t5_ate/best/` (~891 MB)
+
+### 2. FastLcfBertMultiTask (APC)
+
+```
+Input: (sentence, aspect_term)
+          ↓
+[Pre-BERT ToMe] — tuỳ chọn: gộp token trước BERT
+          ↓
+BERT encoder (bert-base-uncased, 12 layers, hidden=768)
+          ↓
+[Post-BERT ToMe] — gộp token sau BERT (mặc định 2 bước)
+          ↓
+  ┌─ Local stream:  H × CDW(lcf_vec)  ← ngữ cảnh quanh aspect (SRD=5)
+  └─ Global stream: H (không che)     ← ngữ cảnh toàn câu
+          ↓
+Linear(2H→H) → Dropout(0.1) → Self-Attention → Pooler
+  ├─ Sentiment head: Linear(H→3) → Softmax   [positive / negative / neutral]
+  └─ Category head:  Linear(H→6) → Softmax   [AMENITY / ... / SERVICE]
+```
+
+**LCF — Local Context Focus:**
+Tập trung vào ngữ cảnh cục bộ xung quanh aspect term với hai chiến lược scoring:
+
+| Chiến lược | Cơ chế | Đặc điểm |
+|---|---|---|
+| **CDM** (Context Dynamic Mask) | Mask nhị phân: token ngoài SRD=5 bị che hoàn toàn | Tập trung cứng, phù hợp nhãn thiểu số |
+| **CDW** (Context Dynamic Weight) | Giảm trọng số tuyến tính theo khoảng cách đến aspect | Tập trung mềm, giữ thông tin toàn cầu |
+
+**ToMe — Token Merging:**
+Gộp token dư thừa để giảm độ phức tạp tính toán (CVPR 2023):
+
+| Chiến lược | Mô tả |
+|---|---|
+| `bipartite` | Ghép cặp token theo nhóm chẵn/lẻ (phương pháp gốc) |
+| `sequential_local` | Gộp hàng xóm trái–phải theo thứ tự |
+| `attention_weighted` | Bảo vệ token aspect, gộp token ít attention nhất |
+
+Khi `tome_resize=True`: nội suy khôi phục độ dài chuỗi ban đầu sau khi gộp.
+
+**Multi-task Loss:**
+```
+L_total = w_sent × L_sentiment + w_cat × L_category
+```
+- `L_sentiment`: CrossEntropyLoss có class weights (train.apc + supplement)
+- `L_category`: CrossEntropyLoss có class weights (chỉ train.apc, bỏ qua supplement)
+
+---
+
+## Cài đặt
+
+### Yêu cầu môi trường
+
+- Python ≥ 3.9
+- CUDA ≥ 11.7 (khuyến nghị cho huấn luyện; CPU inference được hỗ trợ)
+- *(Tuỳ chọn)* [Ollama](https://ollama.com/) + model `qwen3:8b` cho chế độ UOS
+
+### Cài thư viện
+
+```bash
+pip install -r requirements.txt
+```
+
+**Thư viện chính:**
+
+| Thư viện | Phiên bản | Mục đích |
+|---|---|---|
+| `torch` | ≥ 2.0.0 | Deep learning framework |
+| `transformers` | ≥ 4.36.0 | T5 / BERT pretrained models |
+| `pyabsa` | ≥ 2.4.0, < 3 | ABSA utilities & tokenizer helpers |
+| `python-Levenshtein` | ≥ 0.25.0 | Chuẩn hoá đầu ra ATE |
+| `scikit-learn` | ≥ 1.2.0 | Weighted loss, classification metrics |
+| `fastapi` + `uvicorn` | ≥ 0.109.0 | REST API backend |
+| `python-docx` | ≥ 0.8.12 | Upload file .docx |
+| `python-multipart` | ≥ 0.0.6 | Multipart form data |
+
+---
+
+## Huấn luyện
+
+### Bước 1 — Huấn luyện ATE (T5)
 
 ```bash
 python src/train.py \
   --data-dir dataset \
   --output-dir checkpoints/gas_t5_ate \
   --model-name t5-base \
+  --epochs 20 \
   --batch-size 16 \
   --learning-rate 3e-4 \
-  --epochs 20 \
+  --max-input-length 128 \
+  --max-target-length 64 \
   --seed 42
 ```
 
-`ATETrainer` sẽ tự động lưu checkpoint tốt nhất vào:
+Checkpoint tốt nhất (theo dev F1) → `checkpoints/gas_t5_ate/best/`  
+Checkpoint cuối cùng → `checkpoints/gas_t5_ate/last/`
 
-```text
-checkpoints/gas_t5_ate/best/
-```
+**Các tham số CLI:**
 
-Ngoài ra mô hình cuối cùng cũng được lưu vào:
-
-```text
-checkpoints/gas_t5_ate/last/
-```
-
-### Tham số chính
-
-| Tham số | Mặc định | Ý nghĩa |
+| Tham số | Mặc định | Mô tả |
 |---|---|---|
 | `--data-dir` | `dataset/` | Thư mục chứa `train.apc`, `dev.apc`, `test.apc` |
 | `--output-dir` | `checkpoints/gas_t5_ate` | Nơi lưu checkpoint |
-| `--model-name` | `t5-base` | Base model; có thể dùng `t5-small`, `t5-large`, ... |
-| `--batch-size` | `16` | Batch size cho training |
-| `--learning-rate` | `3e-4` | Learning rate |
+| `--model-name` | `t5-base` | Backbone: `t5-small` / `t5-base` / `t5-large` |
+| `--batch-size` | `16` | Batch size |
+| `--learning-rate` | `3e-4` | Learning rate (AdamW) |
 | `--epochs` | `20` | Số epoch tối đa |
-| `--max-input-length` | `128` | Độ dài input tối đa |
+| `--max-input-length` | `128` | Độ dài input T5 tối đa |
 | `--max-target-length` | `64` | Độ dài target tối đa |
-| `--seed` | `42` | Seed cho tái lập kết quả |
-| `--num-workers` | `0` | Số worker cho DataLoader |
+| `--seed` | `42` | Random seed |
+| `--num-workers` | `0` | DataLoader workers |
 
----
-
-## 2. Train Joint APC Multitask (sentiment + category)
-
-Chạy training joint từ thư mục gốc repo:
+### Bước 2 — Huấn luyện APC đa nhiệm (BERT + LCF + ToMe)
 
 ```bash
 python experiments/run_joint_experiments.py
 ```
 
-`run_joint_experiments.py` không dùng CLI args. Cấu hình được hardcode trong biến `CONFIGS` tại file:
+Script chạy tuần tự **12 cấu hình** được định nghĩa trong biến `CONFIGS`. Kết quả từng config lưu tại `runs_joint/<config_name>/`.
 
-```python
-# experiments/run_joint_experiments.py — dòng 109–128
-CONFIGS = [
-    (True, True, True, True, "bipartite", "LCF+Bip (resize)", "lcf_bip_resize"),  # ← đang active
-    # (True, True, True, False, "bipartite", "LCF+Bip (compact)", "lcf_bip_compact"),
-    # (False, False, True, False, "bipartite", "Bip (compact)", "bip_compact"),
-    # (True, True, False, True, "bipartite", "LCF only", "lcf_only"),
-    # ...
-]
-```
+**Hyperparameters cố định:**
 
-Để train config khác, mở `experiments/run_joint_experiments.py` và bỏ comment dòng tương ứng trong `CONFIGS`.
-
-### Output
-
-Output của mỗi config sẽ được lưu trong thư mục con `runs_joint/<short_id>/`.
-
-- `runs_joint/<short_id>/best_model.pt` : checkpoint tốt nhất
-- `runs_joint/<short_id>/meta.json` : metadata về label và config
-- `runs_joint/experiment_results_joint.txt` : bảng kết quả tổng hợp
-- `runs_joint/experiment_results_joint.csv` : kết quả chi tiết từng config
-
-### Các hyperparameter chính trong file
-
-| Biến | Mặc định | Ý nghĩa |
+| Biến | Giá trị | Mô tả |
 |---|---|---|
 | `PRETRAINED_MODEL` | `bert-base-uncased` | BERT backbone |
 | `NUM_EPOCHS` | `15` | Số epoch tối đa |
-| `PATIENCE` | `4` | Early stopping |
+| `PATIENCE` | `4` | Early stopping patience |
 | `BATCH_SIZE` | `16` | Batch size |
 | `LR` | `2e-5` | Learning rate |
-| `MAX_SEQ_LEN` | `128` | Độ dài tối đa cho BERT |
-| `CLAUSE_SPLIT_MODE` | `"uos"` | Chế độ tách mệnh đề — xem mục bên dưới |
+| `MAX_SEQ_LEN` | `128` | Độ dài chuỗi BERT tối đa |
+| `DROPOUT` | `0.1` | Dropout rate |
+| `SRD_THRESHOLD` | `5` | Bán kính ngữ cảnh LCF (SRD) |
+| `TOME_MERGE_STEPS` | `2` | Số bước gộp token (post-BERT) |
+| `SEED` | `42` | Random seed |
+| `USE_MIXED_PRECISION` | `True` | AMP (tự động tắt nếu không có CUDA) |
+
+**12 cấu hình thực nghiệm:**
+
+| Config name | LCF | Scoring | ToMe strategy | Resize |
+|---|---|---|---|---|
+| `baseline_balanced` | ✗ | — | — | — |
+| `attn_resize` | ✗ | — | `attention_weighted` | ✓ |
+| `seq_resize` | ✗ | — | `sequential_local` | ✓ |
+| `bip_resize` | ✗ | — | `bipartite` | ✓ |
+| `lcf_only_cdm` | ✓ | CDM | — | — |
+| `lcf_only_cdw` | ✓ | CDW | — | — |
+| `lcf_attn_cdm_resize` | ✓ | CDM | `attention_weighted` | ✓ |
+| `lcf_attn_cdw_resize` | ✓ | CDW | `attention_weighted` | ✓ |
+| `lcf_bip_cdm_resize` | ✓ | CDM | `bipartite` | ✓ |
+| `lcf_bip_cdw_resize` | ✓ | CDW | `bipartite` | ✓ |
+| `lcf_seq_cdm_resize` | ✓ | CDM | `sequential_local` | ✓ |
+| `lcf_seq_cdw_resize` | ✓ | CDW | `sequential_local` | ✓ |
 
 ---
 
-## 2b. Clause Splitting — Tách mệnh đề lúc inference
+## Đánh giá
 
-> **Lưu ý:** Clause splitting **chỉ được áp dụng lúc inference**, không áp dụng khi training.  
-> Training luôn dùng toàn bộ câu gốc (`clause_split_mode="none"`).
+### Quy trình đánh giá Pipeline
 
-Khi inference, mỗi câu có thể chứa nhiều aspect thuộc nhiều mệnh đề khác nhau.  
-Clause splitting thu hẹp câu xuống đúng mệnh đề chứa aspect trước khi đưa vào mô hình, giúp dự đoán chính xác hơn.
+```bash
+# Bước 1: Infer ATE trên tập test
+python experiments/run_ate_inference.py
+# → runs_ate/test_ate_predictions.csv
 
-### Các mode
+# Bước 2: Đánh giá joint triplet (BERT APC backbone)
+python experiments/eval_joint_triplet.py --model-type bert
+# → runs_ate/eval_joint_triplet_BERT.csv
 
-| Mode | Giá trị | Mô tả |
+# Bước 2 (T5 APC backbone)
+python experiments/eval_joint_triplet.py --model-type t5
+# → runs_ate/eval_joint_triplet_T5.csv
+
+# Đánh giá ATE đơn thuần
+python experiments/eval_results.py --model-type bert
+python experiments/eval_results.py --model-type t5
+# → runs_ate/eval_results_BERT.csv, eval_results_T5.csv
+```
+
+### Metrics
+
+| Metric | Công thức | Ý nghĩa |
 |---|---|---|
-| Không tách | `"none"` | Dùng toàn bộ câu gốc |
-| Rule-based | `"rulebase"` | Tách bằng regex tại dấu `,` `;` và các liên từ đối lập: *but, yet, however, although, though, whereas* — nhanh, không cần GPU/Ollama |
-| UOS (LLM) | `"uos"` | Dùng LLM qua Ollama để tách thành Unit Opinion Sentences — chính xác hơn về ngữ nghĩa nhưng cần `ollama serve` đang chạy |
+| **ATE F1** | $F_1 = \frac{2PR}{P+R}$ (exact-match) | Chất lượng trích xuất aspect term |
+| **Micro F1** | Tính TP/FP/FN trên toàn bộ mẫu | Hiệu suất tổng thể, ưu tiên nhãn phổ biến |
+| **Macro F1** | Trung bình F1 qua các nhãn | Công bằng qua tất cả nhãn, phạt nhãn thiểu số |
+| **Oracle Cat Acc** | Acc category khi aspect gold | Giới hạn trên của classifier category |
+| **Oracle Sent Acc** | Acc sentiment khi aspect gold | Giới hạn trên của classifier sentiment |
+| **Oracle Joint Acc** | Joint acc khi aspect gold | Giới hạn lý thuyết khi ATE hoàn hảo |
 
-### Cách chuyển đổi mode
+---
 
-**Cách 1 — Inference CLI** (`pipeline_inference.py`), dùng flag `--clause-split-mode`:
+## Kết quả thực nghiệm
+
+### Tổng hợp kết quả tốt nhất
+
+| Cài đặt | Config tốt nhất | ATE F1 | Micro F1 | Macro F1 | Oracle Joint |
+|---|---|---|---|---|---|
+| Joint · BERT | `lcf_seq_cdm_resize` | 79.87 | **71.18** | 50.00 | 86.86 |
+| Joint · BERT | `lcf_attn_cdm_resize` | 79.87 | 69.89 | **57.16** | 86.54 |
+| Joint · T5 | `seq_resize` | 79.87 | **71.50** | 50.12 | **89.10** |
+| Joint · T5 | `lcf_bip_cdm_resize` | 79.87 | 71.18 | **56.03** | 86.54 |
+| Pipeline · BERT | `lcf_seq_cdm_resize` | 59.76 | **53.57** | 40.29 | 86.86 |
+| Pipeline · T5 | `seq_resize` | 60.00 | **53.81** | 39.98 | **89.10** |
+
+**Mô hình đề xuất:**
+- **Primary:** Joint · T5 · `seq_resize` — Micro F1 = 71.50, Oracle Joint = 89.10
+- **Backup:** Joint · BERT · `lcf_seq_cdm_resize` — Micro F1 = 71.18, huấn luyện nhanh hơn ~40%
+
+### Nhận xét
+
+**1. Joint vượt Pipeline ~18 điểm Micro F1.**
+ATE trong Pipeline chỉ đạt ~60% F1 (so với 79.87% khi Joint), lỗi lan truyền là nguyên nhân chính. Oracle Joint Acc tương đương giữa hai kiến trúc xác nhận: hạn chế nằm ở bước ATE, không phải classifier.
+
+**2. BERT và T5 cho kết quả tương đương về Micro F1 (~71%).**
+T5 nhỉnh hơn về Oracle Joint Acc (89.10 vs 86.86), cho thấy tiềm năng khi ATE được cải thiện. BERT nhanh hơn đáng kể với các biến thể LCF (+40-56%).
+
+**3. CDM tốt hơn CDW về Macro F1.**
+LCF-CDM (mask nhị phân) giúp xử lý nhãn thiểu số tốt hơn CDW (weight tuyến tính), dẫn đến Macro F1 cao hơn ~7 điểm.
+
+**4. BRANDING_neutral và FACILITY_neutral: F1 = 0.0 trên toàn bộ cấu hình.**
+Phản ánh mất cân bằng nhãn nghiêm trọng trong dữ liệu — không đủ mẫu để học. Đây là vấn đề dữ liệu, không phải lỗi mô hình.
+
+---
+
+## Inference
+
+### Pipeline end-to-end (ATE → APC)
 
 ```bash
-# Dùng rulebase (nhanh, không cần Ollama)
 python pipeline_inference.py \
   --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --clause-split-mode rulebase \
-  --sentence "The room was clean but breakfast was terrible"
-
-# Dùng UOS (LLM-based, cần Ollama)
-python pipeline_inference.py \
-  --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --clause-split-mode uos \
-  --sentence "The room was clean but breakfast was terrible"
-
-# Không tách (dùng toàn câu)
-python pipeline_inference.py \
-  --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
+  --apc-checkpoint-dir runs_joint/lcf_seq_cdm_resize \
+  --bert-name bert-base-uncased \
   --clause-split-mode none \
-  --sentence "The room was clean but breakfast was terrible"
+  --sentence "The room was spotless, but the elevator broke down frequently. Staff were incredibly helpful."
 ```
 
-**Cách 2 — Server** (`server/app.py`), đặt biến môi trường `CLAUSE_SPLIT_MODE` trước khi chạy uvicorn (mặc định `"uos"`):
-
-```bash
-# Windows (cmd)
-set CLAUSE_SPLIT_MODE=rulebase
-uvicorn server.app:app --host 0.0.0.0 --port 5000
-
-# Linux / macOS
-CLAUSE_SPLIT_MODE=rulebase uvicorn server.app:app --host 0.0.0.0 --port 5000
+**Ví dụ đầu ra:**
+```json
+[
+  {"aspect": "room",     "sentiment": "positive", "category": "FACILITY"},
+  {"aspect": "elevator", "sentiment": "negative", "category": "FACILITY"},
+  {"aspect": "staff",    "sentiment": "positive", "category": "SERVICE"}
+]
 ```
 
-### UOS yêu cầu Ollama
-
-Nếu dùng mode `"uos"`, Ollama phải đang chạy và có model `qwen3:8b`:
+### APC cho một aspect đã biết
 
 ```bash
-ollama serve          # terminal riêng
-ollama pull qwen3:8b  # tải model nếu chưa có
+python infer_aspect_term.py \
+  --apc-checkpoint-dir runs_joint/lcf_seq_cdm_resize \
+  --bert-name bert-base-uncased \
+  --sentence "The bedroom was clean and very spacious." \
+  --aspect "bedroom"
+```
+
+### Chế độ tách câu (Clause Splitting)
+
+> Clause splitting **chỉ áp dụng khi inference**, không áp dụng trong huấn luyện.
+
+| Mode | Mô tả | Yêu cầu |
+|---|---|---|
+| `none` | Dùng toàn bộ câu gốc | — |
+| `rulebase` | Tách tại `,` `;` và liên từ đối lập | — |
+| `uos` | Tách bằng LLM Qwen 8B (Ollama) | `ollama serve` đang chạy |
+
+```bash
+# Khởi động Ollama (nếu dùng mode uos)
+ollama serve
+ollama pull qwen3:8b
 ```
 
 Khi Ollama không kết nối được, UOS tự động fallback về câu gốc (không crash).
 
 ---
 
-## 3. Inference Pipeline (ATE → APC)
+## Web Interface
 
-Sử dụng pipeline 2 bước để dự đoán aspect + sentiment + category.
+### Backend (FastAPI)
 
-### Dự đoán 1 câu
-
-```bash
-python pipeline_inference.py \
-  --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --bert-name bert-base-uncased \
-  --clause-split-mode uos \
-  --sentence "The food was amazing but the service was slow"
-```
-
-### Chế độ interactive (nhập nhiều câu)
-
-```bash
-python pipeline_inference.py \
-  --ate-checkpoint checkpoints/gas_t5_ate/best \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --bert-name bert-base-uncased \
-  --clause-split-mode rulebase
-```
-
-Sau đó nhập nhiều câu, nhấn Enter dòng trống để thoát.
-
-### Ví dụ kết quả
-
-```text
-Input: The food was amazing but the service was slow
-  aspect='food'     sentiment=positive   category=EXPERIENCE
-  aspect='service'  sentiment=negative   category=SERVICE
-```
-
----
-
-## 4. Inference trực tiếp: Sentiment + Category cho một aspect term
-
-Sử dụng script `infer_aspect_term.py` để dự đoán sentiment và category cho một câu + một aspect term cụ thể (không cần ATE).
-
-### Cú pháp
-
-```bash
-python infer_aspect_term.py \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --bert-name bert-base-uncased \
-  --sentence "SENTENCE_CONTAINING_ASPECT" \
-  --aspect "ASPECT_TERM"
-```
-
-### Ví dụ
-
-```bash
-python infer_aspect_term.py \
-  --apc-checkpoint-dir runs_joint/lcf_bip_resize \
-  --bert-name bert-base-uncased \
-  --sentence "food is rich, a bit salty. The chef is not as polite as the restaurant service" \
-  --aspect "food"
-```
-
-### Kết quả
-
-```text
-Input sentence: food is rich, a bit salty. The chef is not as polite as the restaurant service
-Aspect term: food
-Sentiment: positive
-Category: FOOD
-```
-
-### Tham số
-
-| Tham số | Bắt buộc | Mặc định | Ý nghĩa |
-|---|---|---|---|
-| `--apc-checkpoint-dir` | Có | — | Thư mục chứa `best_model.pt` + `meta.json` |
-| `--bert-name` | Không | `bert-base-uncased` | HuggingFace BERT variant |
-| `--sentence` | Có | — | Câu đầu vào chứa aspect term |
-| `--aspect` | Có | — | Aspect term cần phân loại |
-| `--max-seq-len` | Không | `128` | Độ dài tối đa cho BERT tokenization |
-
----
-
-## Dataset
-
-Thư mục `dataset/` chứa:
-
-- `train.apc`
-- `dev.apc`
-- `test.apc`
-- `train.xml.seg`, `dev.xml.seg`, `test.xml.seg`
-- `supplement/negative.tsv`
-- `supplement/neutral.tsv`
-
-`src/dataset.py` và `dataset_utils.py` xử lý dữ liệu `.apc` và supplement cho ATE/APC.
-
----
-
-## Ghi chú
-
-- Mô hình ATE lưu tốt nhất vào `checkpoints/gas_t5_ate/best/` và checkpoint cuối cùng vào `checkpoints/gas_t5_ate/last/`.
-- Khi train joint APC, `runs_joint/` chứa model và `meta.json` để `pipeline_inference.py` sử dụng lại.
-- Nếu dùng GPU, các script sẽ tự động kích hoạt CUDA khi có sẵn.
-
----
-
-## Web UI & Full-pipeline inference (ATE → APC)
-
-
-Thư mục `server/` chứa một FastAPI API wrapper để gọi `pipeline_inference.PipelineInference` và trả về kết quả JSON (mỗi aspect gồm 3 label: `aspect`, `sentiment`, `category`). Thư mục `frontend/` là một React app tối thiểu để test nhanh: nhập một câu hoặc upload một file (`.txt` hoặc `.docx`, mỗi dòng một câu).
-
-1) Cài đặt dependencies (từ root project; file `requirements.txt` đã bao gồm `torch`/`transformers`):
-
-```bash
-python -m pip install -r requirements.txt
-pip install fastapi uvicorn python-docx
-```
-
-2) Cấu hình biến môi trường cho backend (hoặc sửa trực tiếp trong `server/app.py`) và chạy bằng `uvicorn`:
-
-> Lưu ý: khi copy vào terminal **không** kèm phần chú thích trên cùng dòng. Ví dụ: `set CLAUSE_SPLIT_MODE=uos  # comment` sẽ lưu cả phần `# comment` vào biến và gây lỗi.
-
-```bash
-# Windows (cmd)uos
-set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best
-set APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize
-set BERT_NAME=bert-base-uncased
-set CLAUSE_SPLIT_MODE=rulebase
-uvicorn server.app:app --host 0.0.0.0 --port 5000
-
-set CLAUSE_SPLIT_MODE=uos && uvicorn server.app:app --host 0.0.0.0 --port 5000
-```
-
-
-winglet :
-```bash
-winget install Cloudflare.cloudflared
-cloudflared --version
-cloudflared tunnel --url http://127.0.0.1:5173
-```
 ```bash
 # Linux / macOS
 ATE_CHECKPOINT=checkpoints/gas_t5_ate/best \
-APC_CHECKPOINT_DIR=runs_joint/lcf_bip_resize \
+APC_CHECKPOINT_DIR=runs_joint/lcf_seq_cdm_resize \
 BERT_NAME=bert-base-uncased \
-CLAUSE_SPLIT_MODE=uos \
+CLAUSE_SPLIT_MODE=none \
+uvicorn server.app:app --host 0.0.0.0 --port 5000
+
+# Windows (Command Prompt)
+set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best
+set APC_CHECKPOINT_DIR=runs_joint/lcf_seq_cdm_resize
+set BERT_NAME=bert-base-uncased
+set CLAUSE_SPLIT_MODE=none
 uvicorn server.app:app --host 0.0.0.0 --port 5000
 ```
 
-Nếu dùng `CLAUSE_SPLIT_MODE=uos`, cần Ollama đang chạy trước:
+**API Endpoints:**
 
+| Endpoint | Method | Body | Mô tả |
+|---|---|---|---|
+| `/predict` | POST | `{"text": "..."}` | Dự đoán một câu → JSON array |
+| `/batch_predict` | POST | `file=@file.txt` | Upload `.txt` / `.docx` (mỗi dòng 1 câu) |
+
+**Ví dụ curl:**
 ```bash
-ollama serve          # terminal riêng
-ollama pull qwen3:8b
+# Single sentence
+curl -X POST http://localhost:5000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "The room was clean but the service was slow."}'
+
+# Batch file
+curl -X POST http://localhost:5000/batch_predict \
+  -F file=@sentences.txt
 ```
 
-Nếu dùng `CLAUSE_SPLIT_MODE=rulebase`, không cần Ollama.
-
-3) Chạy frontend (mở terminal trong `frontend/`):
+### Frontend (React + Vite)
 
 ```bash
 cd frontend
 npm install
 npm run dev
+# Truy cập: http://localhost:5173
 ```
 
-4) Sử dụng UI
-
-- Chọn `Single sentence` để nhập trực tiếp một câu rồi nhấn `Predict`.
-- Chọn `Upload file` để gửi `.txt` hoặc `.docx` (mỗi dòng 1 câu). Kết quả trả về là một mảng cho mỗi dòng; mỗi phần tử chứa danh sách các aspect với 3 label: `aspect`, `sentiment`, `category`.
-
-5) Curl ví dụ (JSON single sentence):
-
-```bash
-curl -X POST http://localhost:5000/predict -H "Content-Type: application/json" -d '{"text": "The food was amazing but the service was slow"}'
-```
-
-6) Curl ví dụ (upload file):
-
-```bash
-curl -X POST http://localhost:5000/batch_predict -F file=@sentences.txt
-```
-
-Ghi chú: backend sẽ load mô hình khi khởi động — việc này có thể mất vài phút nếu lần đầu tải trọng số lớn.
+**Tính năng:**
+- Nhập trực tiếp một câu → bảng kết quả (aspect, sentiment, category)
+- Upload file `.txt` / `.docx` → kết quả theo từng dòng
 
 ---
 
+## Mô-đun bổ sung
 
-Bước 1 — Trích xuất aspect terms (ATE):
-python experiments/run_ate_inference.py
-→ Tạo runs_ate/test_ate_predictions.csv
+### GAS — Generative Aspect Sentiment (một bước)
 
-Bước 2 — Tính joint triplet F1:
-python experiments/eval_joint_triplet.py
-→ Đọc runs_ate/test_ate_predictions.csv + load các model từ runs_joint/*/best_model.pt → in bảng + lưu runs_ate/eval_joint_triplet.csv
+T5 sinh bộ ba `(aspect, category, sentiment)` trực tiếp, không cần bước ATE riêng.
+
+```bash
+python gas/train_gas.py \
+  --data-dir dataset \
+  --output-dir checkpoints_gas \
+  --epochs 20
+```
+
+**Định dạng đầu ra:**
+```
+"(nhân viên, SERVICE, positive); (thang máy, FACILITY, negative)"
+```
+
+### UOS — Unit Opinion Sentence
+
+Phân tách câu đánh giá dài thành các đơn vị ngữ nghĩa, mỗi đơn vị chứa đúng một opinion, trước khi đưa vào APC.
+
+```bash
+python uos/run_llm_uos_eval.py
+```
+
+Chi tiết: [`uos/README.md`](uos/README.md).
 
 ---
-Nếu đang dùng terminal trong VS Code, chắc chắn đang đứng đúng thư mục:
-cd "C:\Users\NGUYEN HO TUYEN\Downloads\kltn\thesis_apc_baseline"
-python experiments/run_ate_inference.py
-python experiments/eval_joint_triplet.py
 
-Hoặc dùng ! prefix trong Claude Code:
-! python experiments/run_ate_inference.py
-! python experiments/eval_joint_triplet.py
+## Biến môi trường
 
+| Biến | Mặc định | Mô tả |
+|---|---|---|
+| `ATE_CHECKPOINT` | `checkpoints/gas_t5_ate/best` | Đường dẫn checkpoint T5 ATE |
+| `APC_CHECKPOINT_DIR` | `runs_joint/lcf_attn_cdm_resize` | Thư mục checkpoint BERT APC |
+| `BERT_NAME` | `bert-base-uncased` | Tên pretrained BERT model |
+| `CLAUSE_SPLIT_MODE` | `uos` | Chế độ tách câu: `none` / `rulebase` / `uos` |
 
+---
 
-# T5 (mặc định)
-python experiments/eval_results.py
+## Tài liệu tham khảo
 
-# Bert
-python experiments/eval_results.py --model-type bert
+- **LCF-ATEPC:** Zeng et al. (2019). *LCF: A Local Context Focus Mechanism for Aspect-Based Sentiment Classification.* Applied Sciences.
+- **ToMe:** Bolya et al. (2023). *Token Merging: Your ViT But Faster.* CVPR 2023.
+- **T5:** Raffel et al. (2020). *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR.
+- **GAS:** Zhang et al. (2021). *Towards Generative Aspect-Based Sentiment Analysis.* ACL-IJCNLP 2021.
+- **PyABSA:** Yang et al. *PyABSA: A Modularized Framework for Reproducible Aspect-based Sentiment Analysis.*
