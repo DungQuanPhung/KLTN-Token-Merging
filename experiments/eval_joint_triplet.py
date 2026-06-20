@@ -104,16 +104,32 @@ def load_gold_triplets(
 
 def load_ate_predictions(
     ate_csv: Path,
+    gold_sentences: List[str] = None,
 ) -> Dict[str, List[str]]:
-    """Load runs_ate/test_ate_predictions.csv → {sentence: [predicted_term, ...]}"""
+    """Load runs_ate/test_ate_predictions.csv → {sentence: [predicted_term, ...]}.
+
+    gold_sentences (optional): ordered list of gold sentence texts from test.apc.
+        When provided and len matches the CSV row count, each row is keyed by
+        the corresponding gold sentence at the SAME INDEX — robust to any text
+        discrepancy between the CSV sentence column and test.apc (different word
+        order, unicode quote variants, trailing punctuation, etc.).
+        When omitted the raw CSV sentence column is used as the key.
+    """
     preds: Dict[str, List[str]] = defaultdict(list)
     with open(ate_csv, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            term = row["predicted_term"].strip()
-            if term:
-                preds[row["sentence"]].append(term)
-    return dict(preds)
+        rows = list(csv.DictReader(f))
 
+    use_index = gold_sentences is not None and len(rows) == len(gold_sentences)
+    if gold_sentences is not None and not use_index:
+        print(f"[warn] load_ate_predictions: gold_sentences length ({len(gold_sentences)}) "
+              f"!= CSV rows ({len(rows)}) — falling back to CSV sentence text as key")
+
+    for idx, row in enumerate(rows):
+        term = row["predicted_term"].strip()
+        if term:
+            key = gold_sentences[idx] if use_index else row["sentence"]
+            preds[key].append(term)
+    return dict(preds)
 
 # ─── Tokenise one (sentence, term) pair ──────────────────────────────────────
 
@@ -477,7 +493,11 @@ def main() -> None:
           f"{sum(len(v) for v in gold_by_sent.values())} gold triplets")
 
     print(f"Loading ATE predictions from {ATE_CSV} …")
-    ate_preds = load_ate_predictions(ATE_CSV)
+    # Pass gold_sentences for index-based alignment: CSV row i → gold sentence i.
+    # This is robust to minor text discrepancies in the CSV's 'sentence' column
+    # (e.g. different unicode quote variants, word-order issues in 2 edge cases).
+    gold_sentences_ordered = [s["text"] for s in parse_apc_file(str(TEST_APC))]
+    ate_preds = load_ate_predictions(ATE_CSV, gold_sentences_ordered)
     print(f"  {sum(len(v) for v in ate_preds.values())} predicted terms "
           f"across {len(ate_preds)} sentences")
 
