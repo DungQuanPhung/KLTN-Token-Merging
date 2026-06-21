@@ -118,7 +118,7 @@ CLAUSE_SPLIT_MODE = "none"
 
 # Set True to mix supplement TSV data into sentiment-head training (recommended).
 # Set False to train on main .apc data only.
-USE_SUPPLEMENT = False
+USE_SUPPLEMENT = True
 
 # Default loss and early stopping weights
 DEFAULT_TASK_WEIGHT_SENT = 1.0  # 1.317
@@ -137,24 +137,31 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # (use_lcf, use_cdm, use_tome, tome_resize, merge_strategy, use_pre_tome, display_name, short_id)
 CONFIGS: List[Tuple] = [
+    # ── 5 methods selected for BERT vs T5 comparison report ───────────────────
+    #   1. baseline_balanced   — anchor (no LCF, no ToMe)
+    #   2. lcf_attn_cdm_resize — ATTN representative (CDM hard masking)
+    #   3. lcf_bip_cdw_resize  — BIP representative  (CDW soft weighting)
+    #   4. lcf_seq_cdm_resize  — best BERT overall (SEQ + CDM)
+    #   5. lcf_seq_cdw_resize  — CDM vs CDW ablation on SEQ (vs #4)
+    #
     # Baseline with different loss/ES weights
     (False, False, False, True, "bipartite",          False, "Baseline (Balanced)",   "baseline_balanced"),
     # ── Post-BERT ToMe (original configs) ─────────────────────────────────────
     # set use_cdm=True/False for LCF configs to compare CDW vs CDM
-    (True,  True,  False, True,  "bipartite",          False, "LCF only CDM",              "lcf_only_cdm"),
-    (True,  False,  False, True,  "bipartite",          False, "LCF only CDW",              "lcf_only_cdw"),
-    (True,  True,  True,  True,  "bipartite",          False, "LCF+Bip CDM (resize)",  "lcf_bip_cdm_resize"),
+    # (True,  True,  False, True,  "bipartite",          False, "LCF only CDM",              "lcf_only_cdm"),
+    # (True,  False,  False, True,  "bipartite",          False, "LCF only CDW",              "lcf_only_cdw"),
+    # (True,  True,  True,  True,  "bipartite",          False, "LCF+Bip CDM (resize)",  "lcf_bip_cdm_resize"),
     (True,  False, True,  True,  "bipartite",          False, "LCF+Bip CDW (resize)",  "lcf_bip_cdw_resize"),
     # (True,  True,  True,  False, "bipartite",          False, "LCF+Bip (compact)",     "lcf_bip_compact"),
-    (False, False, True,  True,  "bipartite",          False, "Bip (resize)",          "bip_resize"),
+    # (False, False, True,  True,  "bipartite",          False, "Bip (resize)",          "bip_resize"),
     (True,  True,  True,  True,  "sequential_local",   False, "LCF+Seq CDM (resize)",  "lcf_seq_cdm_resize"),
     (True,  False, True,  True,  "sequential_local",   False, "LCF+Seq CDW (resize)",  "lcf_seq_cdw_resize"),
     # (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq (compact)",     "lcf_seq_compact"),
-    (False, False, True,  True,  "sequential_local",   False, "Seq (resize)",          "seq_resize"),
+    # (False, False, True,  True,  "sequential_local",   False, "Seq (resize)",          "seq_resize"),
     (True,  True,  True,  True,  "attention_weighted", False, "LCF+Attn CDM (resize)", "lcf_attn_cdm_resize"),
-    (True,  False, True,  True,  "attention_weighted", False, "LCF+Attn CDW (resize)", "lcf_attn_cdw_resize"),
+    # (True,  False, True,  True,  "attention_weighted", False, "LCF+Attn CDW (resize)", "lcf_attn_cdw_resize"),
     # (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn (compact)",   "lcf_attn_compact"),
-    (False, False, True,  True,  "attention_weighted", False, "Attn (resize)",         "attn_resize"),
+    # (False, False, True,  True,  "attention_weighted", False, "Attn (resize)",         "attn_resize"),
     # ── Pre-BERT ToMe (merge at embedding level BEFORE BERT encoder) ──────────
     # use_tome=False below means NO post-BERT merge; combine True+True for both
     # (True,  True,  False, True,  "bipartite",          False,  "LCF+PreBip (resize)",   "lcf_pre_bip"),
