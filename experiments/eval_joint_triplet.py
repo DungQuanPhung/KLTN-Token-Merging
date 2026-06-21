@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import csv
 import json
-import time
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -105,16 +104,32 @@ def load_gold_triplets(
 
 def load_ate_predictions(
     ate_csv: Path,
+    gold_sentences: List[str] = None,
 ) -> Dict[str, List[str]]:
-    """Load runs_ate/test_ate_predictions.csv → {sentence: [predicted_term, ...]}"""
+    """Load runs_ate/test_ate_predictions.csv → {sentence: [predicted_term, ...]}.
+
+    gold_sentences (optional): ordered list of gold sentence texts from test.apc.
+        When provided and len matches the CSV row count, each row is keyed by
+        the corresponding gold sentence at the SAME INDEX — robust to any text
+        discrepancy between the CSV sentence column and test.apc (different word
+        order, unicode quote variants, trailing punctuation, etc.).
+        When omitted the raw CSV sentence column is used as the key.
+    """
     preds: Dict[str, List[str]] = defaultdict(list)
     with open(ate_csv, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            term = row["predicted_term"].strip()
-            if term:
-                preds[row["sentence"]].append(term)
-    return dict(preds)
+        rows = list(csv.DictReader(f))
 
+    use_index = gold_sentences is not None and len(rows) == len(gold_sentences)
+    if gold_sentences is not None and not use_index:
+        print(f"[warn] load_ate_predictions: gold_sentences length ({len(gold_sentences)}) "
+              f"!= CSV rows ({len(rows)}) — falling back to CSV sentence text as key")
+
+    for idx, row in enumerate(rows):
+        term = row["predicted_term"].strip()
+        if term:
+            key = gold_sentences[idx] if use_index else row["sentence"]
+            preds[key].append(term)
+    return dict(preds)
 
 # ─── Tokenise one (sentence, term) pair ──────────────────────────────────────
 
@@ -416,29 +431,6 @@ def macro_prf(
     }
 
 
-# ─── Entity-level hit accuracy ───────────────────────────────────────────────
-
-def entity_hit_acc(
-    gold_by_key:  Dict,
-    pred_by_key:  Dict,
-    all_keys:     list,
-) -> Dict[str, float]:
-    """Câu/entity đúng nếu có ít nhất 1 predicted triplet khớp gold.
-    Extra wrong predictions trong cùng nhóm không bị phạt."""
-    hits = 0
-    for key in all_keys:
-        gold = gold_by_key.get(key, set())
-        pred = pred_by_key.get(key, set())
-        if gold & pred:
-            hits += 1
-    total = len(all_keys)
-    return {
-        "hits":     hits,
-        "total":    total,
-        "accuracy": round(hits / max(total, 1) * 100, 2),
-    }
-
-
 # ─── ATE-only metrics (term extraction, ignore cat+sent) ─────────────────────
 
 def ate_metrics(
@@ -466,6 +458,30 @@ def ate_metrics(
     return {"precision": round(p*100,2), "recall": round(r*100,2), "f1": round(f1*100,2)}
 
 
+# ─── Entity / sentence hit accuracy ─────────────────────────────────────────
+
+def entity_hit_acc(
+    gold_by_key: Dict,
+    pred_by_key: Dict,
+    all_keys: List,
+) -> Dict:
+    """% of keys (entity_id or sentence) where ≥1 predicted triplet matches gold.
+
+    Binary recall metric — does NOT penalise extra predictions per key.
+    Hit = 1 iff |gold ∩ pred| ≥ 1 for that key.
+    """
+    hits = sum(
+        1 for k in all_keys
+        if len(gold_by_key.get(k, set()) & pred_by_key.get(k, set())) > 0
+    )
+    total = len(all_keys)
+    return {
+        "hits":     hits,
+        "total":    total,
+        "accuracy": round(hits / max(total, 1) * 100, 2),
+    }
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -477,7 +493,11 @@ def main() -> None:
           f"{sum(len(v) for v in gold_by_sent.values())} gold triplets")
 
     print(f"Loading ATE predictions from {ATE_CSV} …")
-    ate_preds = load_ate_predictions(ATE_CSV)
+    # Pass gold_sentences for index-based alignment: CSV row i → gold sentence i.
+    # This is robust to minor text discrepancies in the CSV's 'sentence' column
+    # (e.g. different unicode quote variants, word-order issues in 2 edge cases).
+    gold_sentences_ordered = [s["text"] for s in parse_apc_file(str(TEST_APC))]
+    ate_preds = load_ate_predictions(ATE_CSV, gold_sentences_ordered)
     print(f"  {sum(len(v) for v in ate_preds.values())} predicted terms "
           f"across {len(ate_preds)} sentences")
 
@@ -510,15 +530,8 @@ def main() -> None:
             print(f"  [error] {e}")
             continue
 
-        num_terms = sum(len(v) for v in ate_preds.values())
-        num_sents = len(ate_preds)
-        print(f"  Running inference on {num_terms} terms …")
-        _t0 = time.perf_counter()
+        print(f"  Running inference on {sum(len(v) for v in ate_preds.values())} terms …")
         pred_by_sent = predict_triplets(model, tokenizer, ate_preds, cat_map, cat_labels)
-        infer_sec = time.perf_counter() - _t0
-        print(f"  Inference time : {infer_sec:.3f}s  "
-              f"({infer_sec/num_sents*1000:.1f} ms/sent, "
-              f"{infer_sec/num_terms*1000:.1f} ms/term)")
 
         m      = micro_prf(gold_by_sent, pred_by_sent, all_sentences)
         macro  = macro_prf(gold_by_sent, pred_by_sent, all_sentences)
@@ -528,9 +541,6 @@ def main() -> None:
         for cls, f1_cls in macro["per_class"].items():
             print(f"    {cls:<22}: {f1_cls:.2f}%")
 
-        hit = entity_hit_acc(gold_by_sent, pred_by_sent, all_sentences)
-        print(f"  Hit-Acc   → {hit['hits']}/{hit['total']} câu có ≥1 triplet đúng = {hit['accuracy']}%")
-
         oracle = oracle_metrics(model, tokenizer, TEST_APC, cat_map, cat_labels)
         print(f"  Oracle (gold term, upper bound) → "
               f"Cat-Acc={oracle['cat_acc']}%  Sent-Acc={oracle['sent_acc']}%  "
@@ -539,7 +549,6 @@ def main() -> None:
         rows.append({
             "config":            config_name,
             "train_time_sec":    train_time_sec,
-            "infer_time_sec":    round(infer_sec, 3),
             "ate_f1":            ate_m["f1"],
             "ate_precision":     ate_m["precision"],
             "ate_recall":        ate_m["recall"],
@@ -549,8 +558,6 @@ def main() -> None:
             "macro_precision":   macro["precision"],
             "macro_recall":      macro["recall"],
             "macro_f1":          macro["f1"],
-            "hit_acc":           hit["accuracy"],
-            "hit_count":         hit["hits"],
             "oracle_cat_acc":    oracle["cat_acc"],
             "oracle_sent_acc":   oracle["sent_acc"],
             "oracle_joint_acc":  oracle["joint_acc"],
@@ -566,24 +573,21 @@ def main() -> None:
             torch.cuda.empty_cache()
 
     # ── Summary table ──────────────────────────────────────────────────────────
-    W = 156
+    W = 158
     print(f"\n{'═' * W}")
     print("JOINT TRIPLET EVALUATION  (term ∩ category ∩ sentiment — ALL 3 phải đúng)")
     print(f"{'═' * W}")
-    print(f"  {'Config':<26}  {'Train(s)':>8}  {'Infer(s)':>8}  {'ATE-F1':>8}"
+    print(f"  {'Config':<26}  {'Time(s)':>8}  {'ATE-F1':>8}"
           f"  {'Micro-P':>8}  {'Micro-R':>8}  {'Micro-F1':>9}"
           f"  {'Macro-P':>8}  {'Macro-R':>8}  {'Macro-F1':>9}"
-          f"  {'HitAcc':>8}"
           f"  {'OrcCat':>8}  {'OrcSent':>8}  {'OrcJoint':>9}"
           f"  {'TP':>5}  {'FP':>5}  {'FN':>5}")
     print(f"{'─' * W}")
     for row in rows:
         t = row["train_time_sec"]
-        i = row["infer_time_sec"]
-        train_str = f"{t:>7.1f}s" if t == t else "     N/A"
-        infer_str = f"{i:>7.3f}s" if i == i else "     N/A"
+        time_str = f"{t:>7.1f}s" if t == t else "     N/A"
         print(
-            f"  {row['config']:<26}  {train_str}  {infer_str}"
+            f"  {row['config']:<26}  {time_str}"
             f"  {row['ate_f1']:>7.2f}%"
             f"  {row['micro_precision']:>7.2f}%"
             f"  {row['micro_recall']:>7.2f}%"
@@ -591,19 +595,15 @@ def main() -> None:
             f"  {row['macro_precision']:>7.2f}%"
             f"  {row['macro_recall']:>7.2f}%"
             f"  {row['macro_f1']:>8.2f}%"
-            f"  {row['hit_acc']:>7.2f}%"
             f"  {row['oracle_cat_acc']:>7.2f}%"
             f"  {row['oracle_sent_acc']:>7.2f}%"
             f"  {row['oracle_joint_acc']:>8.2f}%"
             f"  {row['tp']:>5}  {row['fp']:>5}  {row['fn']:>5}"
         )
     print(f"{'═' * W}")
-    print("  Train(s)  : thời gian train model")
-    print("  Infer(s)  : thời gian inference trên toàn bộ test set")
-    print("  ATE-F1    : F1 trích xuất aspect term")
+    print("  ATE-F1    : F1 trích xuất aspect term (T5)")
     print("  Micro-F1  : micro F1 triplet — phản ánh overall performance")
     print("  Macro-F1  : macro F1 triplet theo category — nhạy với minority class")
-    print("  HitAcc    : % câu có ≥1 predicted triplet khớp gold (entity-level, không phạt extra pred)")
     print("  Orc*      : ORACLE trên gold term (upper bound) — Cat/Sent/Joint accuracy")
     print("              đo riêng tầng phân loại, KHÔNG tính lỗi của ATE")
     print(f"{'═' * W}")
@@ -614,11 +614,9 @@ def main() -> None:
     with open(OUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["config", "train_time_sec", "infer_time_sec",
-                        "ate_f1", "ate_precision", "ate_recall",
+            fieldnames=["config", "train_time_sec", "ate_f1", "ate_precision", "ate_recall",
                         "micro_precision", "micro_recall", "micro_f1",
                         "macro_precision", "macro_recall", "macro_f1",
-                        "hit_acc", "hit_count",
                         "oracle_cat_acc", "oracle_sent_acc", "oracle_joint_acc",
                         "tp", "fp", "fn"] + all_cat_keys,
             extrasaction="ignore",
