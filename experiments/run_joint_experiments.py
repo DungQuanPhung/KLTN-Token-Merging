@@ -118,7 +118,7 @@ CLAUSE_SPLIT_MODE = "none"
 
 # Set True to mix supplement TSV data into sentiment-head training (recommended).
 # Set False to train on main .apc data only.
-USE_SUPPLEMENT = True
+USE_SUPPLEMENT = False
 
 # Default loss and early stopping weights
 DEFAULT_TASK_WEIGHT_SENT = 1.0  # 1.317
