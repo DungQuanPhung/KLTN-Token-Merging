@@ -1,0 +1,348 @@
+% =====================================================================
+%  Chương IV — KẾT QUẢ THỰC NGHIỆM
+%  File này được thiết kế để \input vào file luận văn chính.
+%  Gói cần khai báo ở preamble của main.tex (đã dùng ở các chương trước):
+%     \usepackage{amsmath, amssymb}
+%     \usepackage{booktabs}
+%     \usepackage{float}          % cho [H]
+%     \usepackage{hyperref}
+%  Số liệu được trích trực tiếp từ các file kết quả trong repo:
+%     runs_ate/eval_joint_triplet_BERT.csv   (Joint, backbone BERT)
+%     runs_ate/eval_joint_triplet_T5.csv     (Joint, backbone T5)
+%     runs_ate/eval_results_BERT.csv         (Pipeline, backbone BERT)
+%     runs_ate/eval_results_T5.csv           (Pipeline, backbone T5)
+%     runs_ate/results_ate_incorrect.csv     (lỗi ATE)
+% =====================================================================
+\providecommand{\cmark}{\ensuremath{\checkmark}}
+\providecommand{\xmark}{\ensuremath{\times}}
+
+\chapter{IV. KẾT QUẢ THỰC NGHIỆM}
+\label{chap:ketqua}
+
+Chương này trình bày bộ dữ liệu, thiết lập thực nghiệm, kết quả định
+lượng và phân tích. Mục~\ref{sec:kq_data} mô tả dữ liệu; mục~\ref{sec:kq_setup}
+trình bày siêu tham số, không gian cấu hình và độ đo; mục~\ref{sec:kq_results}
+báo cáo kết quả của hai kiến trúc Joint/Pipeline trên hai backbone
+BERT/T5; mục~\ref{sec:kq_analysis} phân tích, so sánh; và
+mục~\ref{sec:kq_error} phân tích lỗi. Mọi số liệu được trích trực tiếp từ
+các file kết quả trong repo.
+
+% =====================================================================
+\section{Bộ dữ liệu}
+\label{sec:kq_data}
+
+\subsection{Định dạng và phân chia}
+
+Dữ liệu là tập đánh giá khách sạn tiếng Việt, định dạng \texttt{.apc} với
+mỗi mẫu gồm 4 dòng: câu (chứa placeholder \texttt{\$T\$}), aspect term,
+aspect category, và cảm xúc. Tập được chia cố định thành train/dev/test
+(Bảng~\ref{tab:kq_data_stats}); tập test không tham gia huấn luyện.
+
+\begin{table}[H]
+\centering
+\caption{Thống kê các tập dữ liệu}
+\label{tab:kq_data_stats}
+\begin{tabular}{@{}lrl@{}}
+\toprule
+\textbf{Tập} & \textbf{Số mẫu} & \textbf{Vai trò} \\
+\midrule
+Train & 2\,448 & Huấn luyện (kèm dữ liệu bổ trợ \texttt{supplement}) \\
+Dev   & 304   & Early stopping và chọn checkpoint tốt nhất \\
+Test  & 312   & Đánh giá chính thức \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Không gian nhãn gồm 6 nhóm khía cạnh (\texttt{AMENITY}, \texttt{BRANDING},
+\texttt{EXPERIENCE}, \texttt{FACILITY}, \texttt{LOYALTY}, \texttt{SERVICE})
+và 3 cực cảm xúc (\textit{positive} / \textit{negative} / \textit{neutral}),
+tạo thành các tổ hợp nhãn ghép dùng cho độ đo bộ ba.
+
+\subsection{Mất cân bằng nhãn và dữ liệu bổ trợ}
+
+Phân bố nhãn trong tập huấn luyện \textbf{mất cân bằng nghiêm trọng}:
+tổ hợp \texttt{SERVICE\_positive} chiếm tỉ lệ rất cao, trong khi
+\texttt{BRANDING\_neutral} và \texttt{FACILITY\_neutral} cực hiếm. Để giảm
+mất cân bằng, tập huấn luyện được bổ sung hai file TSV
+(\texttt{supplement/negative.tsv}, \texttt{supplement/neutral.tsv}, chỉ
+gồm \texttt{text}/\texttt{term}/\texttt{sentiment}). Các mẫu bổ trợ được
+đánh dấu \texttt{is\_supplement=True}: chúng \emph{chỉ} tham gia huấn
+luyện đầu phân loại cảm xúc; đầu phân loại nhóm khía cạnh được che khỏi
+chúng (mục~\ref{subsec:multitask_loss}, Chương~3). Như sẽ thấy ở
+mục~\ref{sec:kq_error}, mức độ mất cân bằng này chính là nguyên nhân khiến
+một số nhãn hiếm đạt F1 bằng 0 trên mọi cấu hình.
+
+% =====================================================================
+\section{Thiết lập thực nghiệm}
+\label{sec:kq_setup}
+
+\subsection{Siêu tham số}
+
+\begin{table}[H]
+\centering
+\caption{Siêu tham số huấn luyện module APC}
+\label{tab:kq_hparams}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Siêu tham số} & \textbf{Giá trị} & \textbf{Ghi chú} \\
+\midrule
+Backbone        & \texttt{bert-base-uncased} / \texttt{t5-base} & encoder cho APC \\
+Số epoch tối đa & 15  & \texttt{NUM\_EPOCHS} \\
+Early stopping  & patience $= 4$ & theo dev joint F1 \\
+Batch size      & 16  & \texttt{BATCH\_SIZE} \\
+Learning rate   & $2\times10^{-5}$ & AdamW \\
+Độ dài chuỗi    & 128 & \texttt{MAX\_SEQ\_LEN} \\
+Dropout         & 0.1 & \texttt{DROPOUT} \\
+Số đầu attention & 8  & \texttt{NUM\_HEADS} \\
+SRD threshold $\alpha$ & 5 & bán kính ngữ cảnh LCF \\
+ToMe merge steps & 2 & số vòng gộp (post-BERT) \\
+Mixed precision  & Bật (AMP) & tự tắt nếu không có CUDA \\
+Random seed      & 42 & cố định để tái lập \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tham số được tối ưu bằng \textbf{AdamW}; sau mỗi epoch, mô hình được đánh
+giá trên \texttt{dev} và lưu checkpoint có \textbf{joint F1 trên dev cao
+nhất}, dừng sớm nếu không cải thiện sau \texttt{PATIENCE} epoch. Toàn bộ
+thực nghiệm dùng chế độ \texttt{resize} (xem
+mục~\ref{subsubsec:why_resize}, Chương~3).
+
+\subsection{Không gian cấu hình}
+
+Các cấu hình được tổ chức theo thiết kế nhân tố: bật/tắt LCF; biến thể LCF
+(CDM/CDW); và chiến lược ToMe (\texttt{bipartite}/\texttt{sequential\_local}/%
+\texttt{attention\_weighted}). Bảng~\ref{tab:kq_configs} giải thích quy ước
+đặt tên 12 cấu hình.
+
+\begin{table}[H]
+\centering
+\caption{Quy ước đặt tên cấu hình}
+\label{tab:kq_configs}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Nhóm cấu hình} & \textbf{LCF} & \textbf{ToMe} \\
+\midrule
+\texttt{baseline\_balanced}                 & \xmark & \xmark \\
+\texttt{lcf\_only\_\{cdm,cdw\}}             & \cmark & \xmark \\
+\texttt{\{bip,seq,attn\}\_resize}           & \xmark & \cmark (3 chiến lược) \\
+\texttt{lcf\_\{bip,seq,attn\}\_\{cdm,cdw\}\_resize} & \cmark & \cmark (3 chiến lược $\times$ CDM/CDW) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Độ đo và quy trình đánh giá}
+
+Các độ đo gồm: \textbf{ATE F1} (khớp chính xác); \textbf{Micro F1} và
+\textbf{Macro F1} trên bộ ba (nhãn ghép \texttt{"<sentiment>\_<category>"},
+TP đòi hỏi cả ba thành phần khớp gold); và các chỉ số \textbf{Oracle}
+(Cat/Sent/Joint Acc) -- độ chính xác khi cho trước aspect term gold, phản
+ánh giới hạn trên của bộ phân loại. Hai quy trình đánh giá:
+
+\begin{itemize}
+  \item \textbf{Joint}: ATE và APC đánh giá trên cùng đơn vị khớp với
+        nhãn gold (ATE F1 $\approx 79.87$).
+  \item \textbf{Pipeline}: T5 sinh aspect term tự do, APC phân loại trên
+        các cụm từ \emph{được dự đoán} (ATE F1 $\approx 60$); phản ánh
+        hiệu suất đầu-cuối thực tế kèm lan truyền lỗi.
+\end{itemize}
+
+% =====================================================================
+\section{Kết quả thực nghiệm}
+\label{sec:kq_results}
+
+\subsection{Kiến trúc Joint}
+
+Bảng~\ref{tab:kq_joint_bert} và~\ref{tab:kq_joint_t5} báo cáo 12 cấu hình
+cho hai backbone (ATE F1 $= 79.87$ cho mọi cấu hình; cột thời gian là thời
+gian huấn luyện, giây).
+
+\begin{table}[H]
+\centering
+\caption{Kết quả Joint -- backbone \texttt{BERT} (ATE F1 $=79.87$)}
+\label{tab:kq_joint_bert}
+\small
+\begin{tabular}{@{}lcccr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Micro F1} & \textbf{Macro F1} & \textbf{Oracle Joint} & \textbf{Train (s)} \\
+\midrule
+baseline\_balanced       & 70.53 & 48.80 & 86.54 & 257 \\
+lcf\_only\_cdw           & 69.24 & 46.66 & 85.90 & 265 \\
+lcf\_only\_cdm           & 68.92 & 47.94 & 84.62 & 311 \\
+bip\_resize              & 70.85 & 49.19 & 86.86 & 374 \\
+lcf\_bip\_cdm\_resize    & 69.24 & 54.20 & 84.94 & 383 \\
+lcf\_bip\_cdw\_resize    & 70.53 & 49.61 & 86.86 & 463 \\
+lcf\_attn\_cdw\_resize   & 69.57 & 48.11 & 84.94 & 533 \\
+\textbf{lcf\_seq\_cdm\_resize} & \textbf{71.18} & 50.00 & 86.86 & 553 \\
+lcf\_attn\_cdm\_resize   & 69.89 & \textbf{57.16} & 86.54 & 586 \\
+lcf\_seq\_cdw\_resize    & 70.21 & 50.00 & 86.86 & 608 \\
+seq\_resize              & 69.24 & 47.98 & 86.22 & 651 \\
+attn\_resize             & 68.28 & 47.76 & 85.26 & 684 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Kết quả Joint -- backbone \texttt{T5} (ATE F1 $=79.87$)}
+\label{tab:kq_joint_t5}
+\small
+\begin{tabular}{@{}lcccr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Micro F1} & \textbf{Macro F1} & \textbf{Oracle Joint} & \textbf{Train (s)} \\
+\midrule
+baseline\_balanced       & 69.57 & 47.88 & 85.90 & 337 \\
+lcf\_only\_cdw           & 69.89 & 48.76 & 86.54 & 345 \\
+lcf\_only\_cdm           & 70.21 & 48.75 & 86.22 & 468 \\
+bip\_resize              & 70.53 & 48.03 & 86.86 & 498 \\
+lcf\_bip\_cdw\_resize    & 70.53 & 49.80 & 87.18 & 651 \\
+attn\_resize             & 68.28 & 45.48 & 84.62 & 659 \\
+lcf\_bip\_cdm\_resize    & 71.18 & \textbf{56.03} & 86.54 & 698 \\
+lcf\_attn\_cdw\_resize   & 70.85 & 49.63 & 85.58 & 853 \\
+\textbf{seq\_resize}     & \textbf{71.50} & 50.12 & \textbf{89.10} & 886 \\
+lcf\_seq\_cdw\_resize    & 69.89 & 54.25 & 85.90 & 901 \\
+lcf\_attn\_cdm\_resize   & 67.95 & 53.40 & 84.29 & 913 \\
+lcf\_seq\_cdm\_resize    & 69.89 & 45.79 & 85.90 & 921 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Kiến trúc Pipeline}
+
+Khi T5 sinh aspect term tự do (ATE F1 giảm còn $\approx 60$), Micro F1 bộ
+ba giảm mạnh (Bảng~\ref{tab:kq_pipeline}). Cột \textit{Infer} là thời gian
+suy luận APC trên các cụm từ dự đoán (giây).
+
+\begin{table}[H]
+\centering
+\caption{Kết quả Pipeline -- một số cấu hình tiêu biểu (ATE F1: BERT $=59.76$, T5 $=60.00$)}
+\label{tab:kq_pipeline}
+\small
+\begin{tabular}{@{}llccc r@{}}
+\toprule
+\textbf{Backbone} & \textbf{Cấu hình} & \textbf{Micro F1} & \textbf{Macro F1} & \textbf{Oracle Joint} & \textbf{Infer (s)} \\
+\midrule
+BERT & baseline\_balanced     & 52.86 & 38.41 & 86.54 & 10.8 \\
+BERT & lcf\_seq\_cdm\_resize  & \textbf{53.57} & 40.29 & 86.86 & 14.9 \\
+BERT & lcf\_attn\_cdm\_resize & 52.38 & \textbf{43.90} & 86.54 & 14.8 \\
+\midrule
+T5   & baseline\_balanced     & 52.86 & 39.57 & 85.90 & 7.6 \\
+T5   & seq\_resize            & \textbf{53.81} & 39.98 & \textbf{89.10} & 14.3 \\
+T5   & lcf\_bip\_cdm\_resize  & 53.10 & \textbf{47.81} & 86.54 & 11.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Phân tích và so sánh}
+\label{sec:kq_analysis}
+
+\subsection{Joint vượt Pipeline khoảng 18 điểm Micro F1}
+
+Micro F1 bộ ba của Joint ($\approx 71$) cao hơn Pipeline ($\approx 53$)
+khoảng 18 điểm. Nguyên nhân nằm hoàn toàn ở bước ATE: ATE F1 giảm từ
+$79.87$ (Joint) xuống $\approx 60$ (Pipeline). Bằng chứng then chốt là
+chỉ số \textbf{Oracle Joint Acc gần như không đổi} giữa hai kiến trúc với
+cùng cấu hình (ví dụ \texttt{lcf\_attn\_cdm\_resize}: $86.54$ ở cả Joint
+lẫn Pipeline) -- tức bộ phân loại là \emph{như nhau}, hạn chế đến từ chất
+lượng aspect term được trích xuất, không phải từ classifier. Đây là biểu
+hiện điển hình của \textbf{lan truyền lỗi} trong kiến trúc pipeline.
+
+\subsection{BERT và T5 tương đương về Micro F1}
+
+Hai backbone cho Micro F1 Joint sát nhau ($\approx 71$): tốt nhất là T5
+\texttt{seq\_resize} ($71.50$) và BERT \texttt{lcf\_seq\_cdm\_resize}
+($71.18$). T5 nhỉnh hơn về \textbf{Oracle Joint} ($89.10$ so với $86.86$),
+cho thấy tiềm năng cao hơn \emph{nếu} ATE được cải thiện. Tuy nhiên, BERT
+huấn luyện nhanh hơn rõ rệt (baseline $257$\,s so với $337$\,s; các cấu
+hình LCF của T5 thường vượt $850$--$920$\,s).
+
+\subsection{CDM tốt hơn CDW về Macro F1}
+
+Trên nhãn thiểu số, mặt nạ nhị phân CDM bảo toàn ``tập trung cứng'' tốt
+hơn trọng số mềm CDW, dẫn tới Macro F1 cao hơn đáng kể:
+
+\begin{itemize}
+  \item BERT, chiến lược \texttt{attention\_weighted}: CDM đạt Macro
+        $57.16$ so với CDW $48.11$ ($+9.05$ điểm);
+  \item T5, chiến lược \texttt{bipartite}: CDM đạt Macro $56.03$ so với
+        CDW $49.80$ ($+6.23$ điểm).
+\end{itemize}
+
+Trong khi đó, Micro F1 giữa CDM và CDW chênh lệch nhỏ -- nghĩa là CDM cải
+thiện chủ yếu ở các nhãn hiếm chứ không hy sinh nhãn phổ biến.
+
+\subsection{Gộp token không làm giảm chất lượng}
+
+Một kết quả đáng chú ý: các cấu hình có ToMe \textbf{không kém} baseline,
+thậm chí tốt hơn nhẹ. Với BERT, baseline đạt Micro $70.53$ còn
+\texttt{lcf\_seq\_cdm\_resize} đạt $71.18$ và \texttt{bip\_resize} đạt
+$70.85$. Điều này khẳng định: việc gộp các token tương đồng (loại dư
+thừa) \emph{không} phá hỏng biểu diễn cần cho phân loại -- tiền đề quan
+trọng để áp dụng gộp token cho mục tiêu tăng tốc về sau.
+
+\subsection{Chi phí huấn luyện trong chế độ resize}
+
+Cần nhấn mạnh: trong chế độ \texttt{resize}, các cấu hình ToMe có thời
+gian huấn luyện \textbf{cao hơn} baseline (ví dụ BERT: $257$\,s so với
+$553$\,s ở \texttt{lcf\_seq\_cdm\_resize}), do thêm bước gộp và nội suy
+\emph{mà không} rút ngắn chuỗi cho các lớp phía sau. Điều này một lần nữa
+xác nhận: \textbf{resize chỉ phục vụ đo chất lượng biểu diễn, không phải
+để tăng tốc}; lợi ích tốc độ thực sự thuộc về hướng phát triển
+(Chương~5).
+
+% =====================================================================
+\section{Phân tích lỗi}
+\label{sec:kq_error}
+
+\subsection{Lỗi ở bước trích xuất khía cạnh (ATE)}
+
+Khảo sát \texttt{results\_ate\_incorrect.csv} cho thấy lỗi ATE tập trung
+ở hai dạng (Bảng~\ref{tab:kq_ate_err}): (i) \textbf{sai biên cụm từ} (trích
+thừa/thiếu so với gold), và (ii) \textbf{chọn nhầm khía cạnh} trong câu
+nhiều khía cạnh. Vì tiêu chí chấm là khớp chính xác, các lỗi biên này đều
+bị tính sai hoàn toàn, góp phần kéo ATE F1 Pipeline xuống $\approx 60$.
+
+\begin{table}[H]
+\centering
+\caption{Một số lỗi ATE tiêu biểu}
+\label{tab:kq_ate_err}
+\small
+\begin{tabular}{@{}p{6.6cm}p{3.0cm}p{3.0cm}@{}}
+\toprule
+\textbf{Câu (rút gọn)} & \textbf{Dự đoán} & \textbf{Gold} \\
+\midrule
+\textit{Exceptional staff and customer service} & staff & staff and customer service \\
+\textit{The service staff is very attentive and conscientious} & service staff & conscientious \\
+\textit{they upgraded us to a beautiful suite\dots} & suite & they \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Lỗi ở bước phân loại: nhãn thiểu số}
+
+Ở mọi cấu hình, hai tổ hợp \texttt{BRANDING\_neutral} và
+\texttt{FACILITY\_neutral} đạt \textbf{F1 $= 0$}, và \texttt{SERVICE\_negative}
+thường rất thấp ($0$--$50$). Đây là hệ quả trực tiếp của mất cân bằng dữ
+liệu (mục~\ref{sec:kq_data}): số mẫu của các tổ hợp này quá ít để mô hình
+học. Chính các nhãn ``chết'' này kéo Macro F1 ($\approx 48$--$57$) xuống
+thấp hơn nhiều so với Micro F1 ($\approx 71$). Đây là \textbf{vấn đề dữ
+liệu}, không phải lỗi kiến trúc -- weighted loss và dữ liệu bổ trợ chỉ
+giảm nhẹ chứ không khắc phục triệt để.
+
+% =====================================================================
+\section*{Tóm tắt chương}
+\addcontentsline{toc}{section}{Tóm tắt chương}
+
+Trên bộ dữ liệu đánh giá khách sạn tiếng Việt, kiến trúc \textbf{Joint}
+đạt Micro F1 bộ ba tốt nhất $71.50$ (T5, \texttt{seq\_resize}) và $71.18$
+(BERT, \texttt{lcf\_seq\_cdm\_resize}), vượt \textbf{Pipeline}
+($\approx 53$) khoảng 18 điểm do lan truyền lỗi từ ATE -- được xác nhận
+bởi Oracle Joint Acc gần như không đổi giữa hai kiến trúc. \textbf{CDM}
+cải thiện Macro F1 trên nhãn thiểu số ($+6$ đến $+9$ điểm so với CDW), còn
+\textbf{gộp token} không làm giảm (thậm chí cải thiện nhẹ) chất lượng so
+với baseline. Phân tích lỗi chỉ ra hai nút thắt: lỗi biên/chọn nhầm ở ATE
+và các nhãn thiểu số ``chết'' do mất cân bằng dữ liệu. Đáng chú ý, trong
+chế độ \texttt{resize}, gộp token làm tăng (không giảm) thời gian huấn
+luyện -- khẳng định resize chỉ đo chất lượng biểu diễn; tăng tốc thực sự
+được bàn ở Chương~5.
