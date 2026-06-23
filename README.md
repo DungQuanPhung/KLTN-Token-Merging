@@ -339,7 +339,7 @@ python experiments/run_ate_inference.py
 # → runs_ate/test_ate_predictions.csv
 
 # Bước 2: Đánh giá joint triplet (BERT APC backbone)
-python experiments/eval_joint_triplet.py --model-type bert
+python experiments/eval_joint_triplet_run.py --model-type bert
 # → runs_ate/eval_joint_triplet_BERT.csv
 
 # Bước 2 (T5 APC backbone)

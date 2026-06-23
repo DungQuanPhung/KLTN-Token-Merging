@@ -1,590 +1,461 @@
 % =====================================================================
-%  Chương II — CƠ SỞ LÝ THUYẾT
-%  File này được thiết kế để \input vào file luận văn chính.
-%  Gói cần khai báo ở preamble của main.tex:
-%     \usepackage{amsmath, amssymb}
-%     \usepackage{bbm}            % cho \mathbbm{1} (hàm chỉ thị)
-%     \usepackage{booktabs}
-%     \usepackage{float}          % cho [H]
-%     \usepackage{hyperref}
-%     \usepackage{tikz}
-%     \usetikzlibrary{arrows.meta, positioning}
-%  Nội dung được đối chiếu trực tiếp với mã nguồn trong repo:
-%     models/fast_lcf_bert_multitask.py   (LCF + kiến trúc đa nhiệm)
-%     token_merging/tome_1d.py            (ba chiến lược Token Merging)
-%     experiments/run_joint_experiments.py(huấn luyện, hàm mất mát)
+%  Chương 2 — CƠ SỞ LÝ THUYẾT  (bản viết ngắn gọn, bám sát repo)
+%  Gói cần trong main.tex: amsmath, amssymb, bbm, booktabs, float,
+%                           hyperref, tikz + arrows.meta/positioning
 % =====================================================================
-\chapter{II. CƠ SỞ LÝ THUYẾT}
+\providecommand{\cmark}{\ensuremath{\checkmark}}
+\providecommand{\xmark}{\ensuremath{\times}}
+
+\chapter{II. Cơ sở lý thuyết}
 \label{chap:coso_lythuyet}
 
-Chương này trình bày các nền tảng lý thuyết được sử dụng trực tiếp trong
-hệ thống cài đặt của khóa luận. Nội dung được tổ chức theo trình tự từ
-bài toán (Phân tích cảm xúc theo khía cạnh), đến kiến trúc nền
-(Transformer, BERT, T5), cơ chế tập trung ngữ cảnh cục bộ
-(Local Context Focus -- LCF), kỹ thuật gộp token (Token Merging -- ToMe),
-và cuối cùng là cách các thành phần này được ghép lại thành kiến trúc
-tổng thể \texttt{FAST\_LCF\_BERT} / \texttt{FastLcfBertMultiTask} đang
-được sử dụng làm baseline thực nghiệm. Mỗi phần lý thuyết đều được đối
-chiếu trực tiếp với mã nguồn tương ứng trong repo để bảo đảm tính nhất
-quán giữa lý thuyết và cài đặt.
+Chương này tóm tắt các nền tảng lý thuyết được sử dụng trực tiếp trong
+hệ thống: bài toán ABSA và các bài toán con, kiến trúc Transformer,
+mô hình tiền huấn luyện BERT/T5 kèm kỹ thuật giải mã và chuẩn hóa đầu
+ra, cơ chế Local Context Focus (LCF) và kỹ thuật Token Merging (ToMe).
+Mỗi mục tập trung vào các khái niệm và công thức cốt lõi; chi tiết
+hiện thực được trình bày ở Chương~\ref{chap:phuongphap}.
 
 % =====================================================================
-\section{Bài toán Phân tích cảm xúc theo khía cạnh (ABSA)}
+\section{2.1.\; Phân tích cảm xúc theo khía cạnh (ABSA)}
 \label{sec:absa}
 
-\subsection{Từ phân tích cảm xúc mức văn bản đến phân tích theo khía cạnh}
-
-Phân tích cảm xúc (Sentiment Analysis) truyền thống thường được thực
-hiện ở mức câu hoặc mức văn bản: gán cho toàn bộ đoạn văn một nhãn cảm
-xúc duy nhất (tích cực / tiêu cực / trung lập). Cách tiếp cận này bộc lộ
-hạn chế rõ rệt khi một câu chứa nhiều đối tượng (khía cạnh) với cảm xúc
-khác nhau. Ví dụ câu đánh giá:
-
-\begin{quote}
-\textit{``The room was beautiful but the staff was rude.''}
-\end{quote}
-
-chứa hai khía cạnh \textit{room} (cảm xúc \textbf{Positive}) và
-\textit{staff} (cảm xúc \textbf{Negative}). Một mô hình phân loại cảm
-xúc mức câu sẽ không biểu diễn được sự mâu thuẫn này. \textbf{Phân tích
-cảm xúc theo khía cạnh} (Aspect-Based Sentiment Analysis -- ABSA) ra đời
-để giải quyết vấn đề trên: với mỗi khía cạnh (aspect term / aspect
-category) xuất hiện trong câu, mô hình cần dự đoán cảm xúc tương ứng dựa
-trên ngữ cảnh cục bộ xung quanh khía cạnh đó.
-
-\subsection{Các bài toán con của ABSA}
+\subsection{2.1.1.\; Định nghĩa và các bài toán con}
 \label{subsec:absa_subtasks}
 
-ABSA không phải một bài toán đơn lẻ mà là một nhóm các bài toán con,
-khác nhau ở đầu vào/đầu ra và mức độ chi tiết của thông tin cần trích
-xuất (Bảng~\ref{tab:absa_subtasks}) \cite{pontiki2016semeval}.
+\textbf{ABSA} (Aspect-Based Sentiment Analysis) phân tích cảm xúc
+\emph{theo từng khía cạnh} thay vì toàn bộ câu. Câu
+\textit{``The room was beautiful but the staff was rude''} mang cảm
+xúc \textbf{Positive} với \textit{room} và \textbf{Negative} với
+\textit{staff} -- phân tích cảm xúc mức câu không biểu diễn được sự
+mâu thuẫn này \cite{pontiki2016semeval}.
+
+ABSA bao gồm một nhóm bài toán con (Bảng~\ref{tab:absa_subtasks}).
+Khóa luận tập trung vào hai bài toán: \textbf{ATE} (trích xuất cụm
+từ khía cạnh) và \textbf{APC} (phân loại cảm xúc + nhóm khía cạnh);
+các bài toán end-to-end phức tạp hơn (ASTE, ASQP) chỉ được khảo sát
+ở mức tổng quan.
 
 \begin{table}[H]
 \centering
-\caption{Các bài toán con của ABSA}
+\caption{Các bài toán con chính của ABSA}
 \label{tab:absa_subtasks}
-\begin{tabular}{@{}p{2.0cm}p{4.0cm}p{2.4cm}p{4.6cm}@{}}
+\small
+\begin{tabular}{@{}llll@{}}
 \toprule
 \textbf{Bài toán} & \textbf{Tên đầy đủ} & \textbf{Đầu vào} & \textbf{Đầu ra} \\
 \midrule
 ATE  & Aspect Term Extraction & Câu & Danh sách cụm từ khía cạnh \\
-APC  & Aspect (Category) Polarity Classification & Câu + khía cạnh & Nhãn cảm xúc + nhóm khía cạnh \\
+APC  & Aspect Polarity Classification & Câu + khía cạnh & Cảm xúc, nhóm khía cạnh \\
 ASTE & Aspect Sentiment Triplet Extraction & Câu & (khía cạnh, ý kiến, cảm xúc) \\
-ASQP & Aspect-Category-Opinion-Sentiment Quad & Câu & (khía cạnh, danh mục, ý kiến, cảm xúc) \\
+ASQP & Aspect-Category-Opinion-Sentiment Quad & Câu & Bộ bốn ACOS \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Trong phạm vi khóa luận, hai bài toán con được giải quyết trực tiếp là:
+\subsection{2.1.2.\; Bài toán trích xuất bộ ba (Joint Triplet Extraction)}
+\label{subsec:triplet}
 
-\begin{itemize}
-  \item \textbf{ATE} -- trích xuất \emph{vị trí} các cụm từ khía cạnh
-        (ví dụ: \textit{room}, \textit{staff}); trong khóa luận, ATE
-        được hình thức hóa thành bài toán sinh có điều kiện và giải bằng
-        mô hình T5 (xem mục~\ref{subsec:t5}).
-  \item \textbf{APC} -- bài toán \textbf{trọng tâm của khóa luận}: cho
-        trước khía cạnh, mô hình dự đoán đồng thời \emph{cảm xúc}
-        (Positive / Negative / Neutral) và \emph{nhóm khía cạnh}
-        (ví dụ \texttt{SERVICE}, \texttt{FACILITY}, \texttt{AMENITY},
-        \texttt{EXPERIENCE}, \texttt{BRANDING}, \texttt{LOYALTY}) cho
-        khía cạnh đó, thông qua kiến trúc \texttt{FAST\_LCF\_BERT}.
-\end{itemize}
-
-Các bài toán end-to-end phức tạp hơn (ASTE, ASQP) được khảo sát để hiểu
-bối cảnh nghiên cứu chung của ABSA và làm cơ sở định hướng mở rộng,
-nhưng không nằm trong phạm vi thực nghiệm trực tiếp.
+Khóa luận hình thức hóa đầu ra hệ thống là tập bộ ba:
+\begin{equation}
+\mathcal{T} = \{(a_i, c_i, s_i)\}_{i=1}^{m}
+\label{eq:triplet}
+\end{equation}
+với $a_i$ là \textit{aspect term}, $c_i \in$ \{\texttt{AMENITY, BRANDING,
+EXPERIENCE, FACILITY, LOYALTY, SERVICE}\} là \textit{aspect category},
+và $s_i \in$ \{Positive, Negative, Neutral\}. Một bộ ba đúng khi
+\textbf{cả ba thành phần} khớp đồng thời với nhãn gold.
 
 % =====================================================================
-\section{Kiến trúc Transformer và cơ chế Attention}
+\section{2.2.\; Kiến trúc Transformer và cơ chế Attention}
 \label{sec:transformer}
 
-\subsection{Tổng quan kiến trúc Transformer}
+Transformer \cite{vaswani2023attentionneed} thay thế cơ chế hồi quy
+bằng \textbf{self-attention}, xử lý toàn chuỗi song song. Mỗi khối
+encoder gồm: \textbf{Multi-Head Self-Attention (MHSA)} + residual +
+LayerNorm, và \textbf{Feed-Forward Network (FFN)} + residual + LayerNorm.
 
-Transformer \cite{vaswani2023attentionneed} là kiến trúc nền tảng của
-hầu hết các mô hình ngôn ngữ hiện đại, bao gồm BERT và T5 được sử dụng
-làm encoder trong khóa luận. Khác với RNN/LSTM, Transformer xử lý toàn
-bộ chuỗi đầu vào \emph{đồng thời}, thay thế cơ chế hồi quy bằng
-\textbf{self-attention}, cho phép mỗi token ``nhìn'' trực tiếp tới mọi
-token khác bất kể khoảng cách, đồng thời tận dụng tối đa khả năng tính
-toán song song trên GPU. Một khối encoder gồm hai thành phần chính được
-lặp lại nhiều lần: \textbf{Multi-Head Self-Attention (MHSA)} và
-\textbf{Feed-Forward Network (FFN)}, mỗi thành phần được bao bởi
-\textbf{kết nối tắt (residual)} và \textbf{Layer Normalization}.
-
-\subsection{Self-Attention và Multi-Head Self-Attention}
-\label{subsec:mhsa}
-
-Với chuỗi gồm $n$ token, mỗi token là một vector $d_{model}$ chiều tạo
-thành ma trận $X \in \mathbb{R}^{n \times d_{model}}$. Self-attention
-chiếu $X$ thành Query, Key, Value:
-
+\textbf{Self-Attention} chiếu chuỗi đầu vào $X \in \mathbb{R}^{n \times d}$
+thành Query, Key, Value:
 \begin{equation}
-Q = XW^Q, \quad K = XW^K, \quad V = XW^V
-\label{eq:qkv}
+Q = XW^Q,\quad K = XW^K,\quad V = XW^V
 \end{equation}
-
-Đầu ra attention được tính bằng \textbf{tích vô hướng tỉ lệ}:
-
+Đầu ra:
 \begin{equation}
-\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V
+\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
 \label{eq:attention}
 \end{equation}
 
-Hệ số $\sqrt{d_k}$ tránh tích vô hướng quá lớn làm \texttt{softmax} bão
-hòa. Transformer dùng \textbf{nhiều đầu attention} song song, mỗi đầu
-học một loại quan hệ ngữ nghĩa/cú pháp khác nhau:
+Chi phí tính toán tỉ lệ $O(n^2 \cdot d_k)$ -- đây là động lực cốt
+lõi của Token Merging: giảm $n$ sẽ giảm chi phí bậc hai.
 
+\textbf{Multi-Head Attention} dùng $h$ đầu song song, mỗi đầu học
+một loại quan hệ khác nhau:
 \begin{equation}
-\text{MultiHead}(Q,K,V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W^O
-\label{eq:multihead}
+\text{MultiHead}(Q,K,V) = \text{Concat}(\text{head}_1,\ldots,\text{head}_h)W^O
 \end{equation}
 
-Đây chính là thành phần được tái sử dụng trong các lớp self-attention
-(\texttt{bert\_SA}, \texttt{bert\_SA\_}) của kiến trúc
-\texttt{FAST\_LCF\_BERT} (mục~\ref{sec:overall_arch}), cài đặt qua lớp
-\texttt{nn.MultiheadAttention} trong \texttt{\_SALayer}
-(\texttt{models/fast\_lcf\_bert\_multitask.py}).
-
-Một điểm quan trọng cho Token Merging (mục~\ref{sec:tome}) là chi phí
-của~\eqref{eq:attention} tỉ lệ $O(n^2 \cdot d_k)$ do tích $QK^{\top}$ tạo
-ra ma trận attention kích thước $n \times n$. Khi $n$ giảm (nhờ gộp
-token), chi phí của các lớp self-attention \emph{phía sau} điểm gộp giảm
-theo bậc hai -- đây là động lực cốt lõi của Token Merging.
-
-\subsection{Positional Encoding, Feed-Forward và chuẩn hóa}
-
-Vì self-attention không có khái niệm thứ tự, Transformer gốc bổ sung
-\textbf{positional encoding} dạng sin/cos vào embedding đầu vào (BERT
-thay bằng \textbf{positional embedding học được}). Mỗi khối encoder còn
-chứa một \textbf{Feed-Forward Network} hai lớp:
-
+\textbf{FFN} hai lớp với hàm kích hoạt GELU:
 \begin{equation}
-\text{FFN}(x) = \text{GELU}(xW_1 + b_1)W_2 + b_2
-\label{eq:ffn}
+\text{FFN}(x) = \text{GELU}(xW_1+b_1)W_2+b_2
 \end{equation}
-
-cùng kết nối tắt và \texttt{LayerNorm} sau mỗi sub-layer:
-$\text{LayerNorm}(x + \text{Sublayer}(x))$. Cấu trúc residual + LayerNorm
-này được lặp lại trong các lớp \texttt{\_SALayer} của khóa luận
-(\texttt{self.norm = nn.LayerNorm}, áp dụng trên
-$x + \text{dropout}(\text{attn}(x))$).
 
 % =====================================================================
-\section{Mô hình ngôn ngữ tiền huấn luyện: BERT và T5}
+\section{2.3.\; Mô hình tiền huấn luyện: BERT và T5}
 \label{sec:plm}
 
-\subsection{BERT}
+\subsection{2.3.1.\; BERT}
 \label{subsec:bert}
 
-BERT (Bidirectional Encoder Representations from Transformers)
-\cite{devlin2019bert} là một encoder Transformer được huấn luyện trước
-theo hai mục tiêu tự giám sát: \textbf{Masked Language Modeling (MLM)} --
-che ngẫu nhiên 15\% token và dự đoán lại dựa trên ngữ cảnh \emph{hai
-chiều}; và \textbf{Next Sentence Prediction (NSP)}. BERT dùng tokenizer
-\textbf{WordPiece}, thêm token \texttt{[CLS]} ở đầu chuỗi (biểu diễn
-tổng hợp cho phân loại) và \texttt{[SEP]} để phân tách/đánh dấu kết
-thúc. Đầu ra của BERT là ma trận \textit{hidden states}
-$H \in \mathbb{R}^{L \times d_h}$ ($d_h = 768$ với
-\texttt{bert-base-uncased}). Trong cài đặt của khóa luận, $H$ chính là
-đầu vào cho cả nhánh LCF và nhánh Token Merging.
+BERT \cite{devlin2019bert} là encoder Transformer hai chiều, huấn luyện
+trước bằng \textbf{Masked Language Modeling} (che 15\% token, dự đoán
+lại từ ngữ cảnh hai chiều) và \textbf{Next Sentence Prediction}.
 
-Hai token \texttt{[CLS]} và \texttt{[SEP]} đóng vai trò quan trọng xuyên
-suốt pipeline: \texttt{[CLS]} được lớp pooler dùng làm biểu diễn cuối
-cùng cho phân loại, còn cả hai được \textbf{bảo vệ tuyệt đối}
-(\texttt{protect\_cls=True}, \texttt{protect\_sep=True}) khỏi việc bị
-gộp trong module Token Merging (mục~\ref{sec:tome}).
+Tokenizer \textbf{WordPiece} thêm token đặc biệt: \texttt{[CLS]} (đầu
+chuỗi, dùng cho phân loại) và \texttt{[SEP]} (phân tách). Đầu ra là
+ma trận hidden states $H \in \mathbb{R}^{L \times 768}$ -- đầu vào
+trực tiếp cho các module LCF và ToMe của khóa luận.
 
-\subsection{T5}
+\noindent\textit{Vai trò trong repo}: \texttt{[CLS]} và \texttt{[SEP]}
+được bảo vệ tuyệt đối (\texttt{protect\_cls=True, protect\_sep=True})
+khỏi bị gộp trong \texttt{ToMeSequenceMerger}.
+
+\subsection{2.3.2.\; T5}
 \label{subsec:t5}
 
-T5 (Text-to-Text Transfer Transformer) là mô hình Transformer theo kiến
-trúc encoder--decoder, biểu diễn mọi bài toán NLP dưới dạng sinh văn bản
-(\textit{text-to-text}). T5 được huấn luyện trước trên tập C4 với mục
-tiêu \textit{span corruption}: một số đoạn liên tiếp bị thay bằng token
-đặc biệt và mô hình tái tạo lại các đoạn đó.
+T5 \cite{raffel2020t5} (Text-to-Text Transfer Transformer) biểu diễn
+mọi bài toán NLP dưới dạng \emph{sinh văn bản}. T5 theo kiến trúc
+encoder--decoder, huấn luyện trước với mục tiêu \textit{span corruption}.
 
-Trong khóa luận, T5 được dùng cho bài toán ATE. Thay vì gán nhãn chuỗi
-theo sơ đồ BIO, ATE được hình thức hóa thành bài toán \emph{sinh có điều
-kiện}. Mô hình \texttt{T5AspectExtractor} (xây trên
-\texttt{T5ForConditionalGeneration}, backbone \texttt{t5-base}) nhận câu
-đánh giá và sinh trực tiếp danh sách cụm từ khía cạnh theo định dạng GAS
-(\textit{Generative Aspect-based Sentiment}). Ví dụ, với câu
-\textit{``The room was beautiful but the staff was rude.''} mô hình sinh
-ra \texttt{"(room); (staff)"}; câu không chứa khía cạnh nào sinh ra
-\texttt{"none"}. Cách tiếp cận sinh xử lý linh hoạt số lượng khía cạnh
-không cố định và loại bỏ nhu cầu thiết kế nhãn BIO. Tuy nhiên, đầu ra có
-thể lệch khỏi văn bản gốc (lỗi chính tả, thiếu/thừa từ), nên được hậu
-xử lý bằng kỹ thuật \textbf{đối sánh n-gram theo khoảng cách Levenshtein}
-để ánh xạ mỗi cụm từ về chuỗi con gần nhất thực sự xuất hiện trong câu.
+\noindent\textit{Vai trò trong repo}: \texttt{T5AspectExtractor}
+(backbone \texttt{t5-base}) giải bài toán ATE bằng \textbf{sinh có điều
+kiện} theo định dạng GAS -- câu đầu vào $\to$ danh sách khía cạnh
+\texttt{"(term1); (term2)"} hoặc \texttt{"none"}. Đầu ra được chuẩn
+hóa về vị trí trong câu gốc bằng đối sánh Levenshtein (mục~\ref{subsec:lev_ngram}).
 
-\subsection{Lựa chọn backbone trong khuôn khổ khóa luận}
-\label{subsec:backbone_choice}
+\subsection{2.3.3.\; Giải mã Beam Search}
+\label{subsec:beam_search}
 
-Hệ thống ABSA đầu-cuối gồm hai thành phần ứng với hai bài toán con, mỗi
-thành phần dùng một mô hình tiền huấn luyện phù hợp:
+\subsubsection{2.3.3.1.\; Vấn đề của greedy decoding}
 
-\begin{itemize}
-  \item \textbf{APC}: kiến trúc \texttt{FAST\_LCF\_BERT} /
-        \texttt{FastLcfBertMultiTask} dùng \texttt{bert-base-uncased}
-        làm backbone. Các module LCF và Token Merging chỉ thao tác trên
-        \texttt{last\_hidden\_state} $H \in \mathbb{R}^{L \times d_h}$ và
-        kích thước ẩn \texttt{hidden\_size}, nên kiến trúc không phụ
-        thuộc chặt vào một backbone cụ thể -- về nguyên tắc mọi encoder
-        HuggingFace cùng định dạng đầu ra đều có thể thay thế. BERT được
-        chọn để bảo đảm tính phổ biến, khả năng tái lập và chi phí huấn
-        luyện hợp lý.
-  \item \textbf{ATE}: dùng \texttt{t5-base} qua
-        \texttt{T5ForConditionalGeneration}, thích hợp cho việc sinh
-        trực tiếp danh sách cụm từ khía cạnh.
-\end{itemize}
+Trong bài toán sinh chuỗi (sequence generation), \textbf{greedy decoding}
+tại mỗi bước chọn token có xác suất cao nhất:
+\begin{equation}
+\hat{y}_t = \arg\max_{v \in \mathcal{V}} P(v \mid y_{<t}, x)
+\label{eq:greedy}
+\end{equation}
+Cách này nhanh nhưng dễ rơi vào cực tiểu cục bộ: một lựa chọn tốt ở
+bước $t$ có thể dẫn đến chuỗi kém ở các bước sau. Trong sinh danh sách
+khía cạnh, greedy decoding có thể bỏ lỡ cụm từ ngắn hơn nhưng phổ biến
+hơn do bị ``kéo'' về phía một nhánh sinh sớm.
 
-Sự kết hợp này tận dụng khả năng biểu diễn ngữ cảnh hai chiều của BERT
-cho phân loại và khả năng sinh chuỗi linh hoạt của T5 cho trích xuất,
-tạo thành một hệ thống đầu-cuối sinh bộ ba \textit{(aspect term, aspect
-category, sentiment)}.
+\subsubsection{2.3.3.2.\; Thuật toán Beam Search}
+
+\textbf{Beam Search} duy trì $k$ ứng viên (beam) song song tại mỗi bước
+giải mã. Tại bước $t$, mỗi ứng viên $b_j$ được mở rộng thành $|\mathcal{V}|$
+nhánh; trong tổng số $k \cdot |\mathcal{V}|$ ứng viên mới, chỉ giữ lại
+$k$ ứng viên có log-xác suất tích lũy cao nhất:
+\begin{equation}
+\text{score}(y_{1:t}) = \sum_{\tau=1}^{t} \log P(y_\tau \mid y_{<\tau}, x)
+\label{eq:beam_score}
+\end{equation}
+\begin{equation}
+\mathcal{B}_t = \text{Top-}k\!\left\{
+  (b, v) : b \in \mathcal{B}_{t-1},\; v \in \mathcal{V}
+\right\}_{\text{score}}
+\label{eq:beam_topk}
+\end{equation}
+
+Sau $T$ bước, ứng viên có score cao nhất trong tất cả beam là kết quả.
+Với $k=1$, Beam Search suy biến về greedy decoding.
+
+\textbf{Length penalty} thường được áp dụng để tránh thiên vị các chuỗi
+ngắn:
+\begin{equation}
+\text{score\_norm}(y) = \frac{\text{score}(y)}{|y|^\alpha},\quad \alpha \in (0,1]
+\label{eq:length_penalty}
+\end{equation}
+
+\noindent\textit{Vai trò trong repo}: \texttt{T5AspectExtractor} dùng
+Beam Search với $k=4$ (\texttt{num\_beams=4}), \texttt{max\_length=64}.
+Bốn beam cho phép mô hình khám phá đồng thời các cách ghép term khác
+nhau (ví dụ \texttt{"(room)"} vs \texttt{"(the room)"}), giảm rủi ro
+bỏ sót khía cạnh do greedy chọn nhầm token đầu tiên.
+
+\subsection{2.3.4.\; Chuẩn hóa đầu ra bằng khoảng cách Levenshtein}
+\label{subsec:levenshtein}
+
+\subsubsection{2.3.4.1.\; Vấn đề lệch chuỗi sinh}
+
+T5 sinh tự do không đảm bảo đầu ra là chuỗi con chính xác của câu gốc:
+mô hình có thể sinh sai chính tả, đổi viết hoa/thường, thêm/bớt
+whitespace, hoặc dùng dạng từ biến thể (ví dụ: \textit{``staffs''}
+thay vì \textit{``staff''}). Nếu dùng trực tiếp chuỗi sinh làm aspect
+term, bước APC sẽ không tìm được vị trí token tương ứng trong câu
+$\Rightarrow$ \texttt{lcf\_vec} sai.
+
+\subsubsection{2.3.4.2.\; Khoảng cách Levenshtein}
+\label{subsec:levenshtein_dist}
+
+\textbf{Khoảng cách chỉnh sửa Levenshtein} (edit distance) $\text{lev}(s, t)$
+giữa hai chuỗi $s$ và $t$ là số thao tác \emph{tối thiểu} (chèn, xóa,
+thay thế một ký tự) cần thiết để biến $s$ thành $t$:
+\begin{equation}
+\text{lev}(s,t) =
+\begin{cases}
+|s| & \text{nếu } |t|=0 \\
+|t| & \text{nếu } |s|=0 \\
+\text{lev}(s[1:], t[1:]) & \text{nếu } s[0]=t[0] \\
+1 + \min \left\{
+\begin{array}{l}
+\text{lev}(s[1:], t) \\
+\text{lev}(s, t[1:]) \\
+\text{lev}(s[1:], t[1:])
+\end{array}
+\right. & \text{nếu } s[0]\neq t[0]
+\end{cases}
+\label{eq:levenshtein}
+\end{equation}
+
+Tính toán hiệu quả bằng lập trình động trong $O(|s|\cdot|t|)$.
+
+\subsubsection{2.3.4.3.\; Chuẩn hóa n-gram bằng Levenshtein}
+\label{subsec:lev_ngram}
+
+Thay vì so sánh chuỗi sinh $\hat{a}$ với toàn bộ câu $x$, hệ thống
+liệt kê tất cả \textbf{n-gram liên tiếp} (với $n$ bằng số token của
+$\hat{a}$) trong câu gốc, rồi chọn n-gram có khoảng cách Levenshtein
+nhỏ nhất:
+\begin{equation}
+a^* = \arg\min_{g \in \text{ngrams}(x,\,|\hat{a}|)} \text{lev}(\hat{a},\, g)
+\label{eq:lev_match}
+\end{equation}
+
+Nếu $\text{lev}(\hat{a}, a^*) = 0$, cụm từ khớp chính xác. Nếu lớn hơn
+một ngưỡng (ví dụ $>0.4 \cdot |\hat{a}|$), cụm từ bị loại bỏ (có thể
+là ảo giác -- hallucination của T5).
+
+\begin{table}[H]
+\centering
+\caption{Ví dụ chuẩn hóa Levenshtein trên đầu ra T5}
+\label{tab:lev_example}
+\small
+\begin{tabular}{@{}p{3.5cm}p{3.5cm}cp{4.0cm}@{}}
+\toprule
+\textbf{Câu gốc} & \textbf{T5 sinh ra} & \textbf{lev} & \textbf{Sau chuẩn hóa} \\
+\midrule
+\textit{``The room was great''} & \texttt{room} & 0 & \texttt{room} \cmark \\
+\textit{``Excellent staffs at front desk''} & \texttt{staffs} & 1 & \texttt{staffs} \cmark \\
+\textit{``The wifi is slow''} & \texttt{wi-fi} & 2 & \texttt{wifi} \cmark \\
+\textit{``Clean and spacious''} & \texttt{location} & 6 & loại bỏ \xmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textit{Vai trò trong repo}: hàm \texttt{normalize\_aspect\_term()}
+trong \texttt{src/inference.py} áp dụng đối sánh n-gram Levenshtein
+trên từng cụm từ trong đầu ra beam search của \texttt{T5AspectExtractor}.
+Bước này đảm bảo aspect term được trả về luôn là chuỗi con hợp lệ
+xuất hiện trong câu gốc, cho phép \texttt{build\_lcf\_vec()} xác định
+vị trí token chính xác qua \texttt{offset\_mapping}.
 
 % =====================================================================
-\section{Cơ chế Local Context Focus (LCF)}
+\section{2.4.\; Cơ chế Local Context Focus (LCF)}
 \label{sec:lcf}
 
-\subsection{Động lực: ngữ cảnh cục bộ và ngữ cảnh toàn cục}
+\subsection{2.4.1.\; Động lực}
 
-Trong câu \textit{``The room was beautiful but the staff was rude.''},
-từ \textit{beautiful} chỉ mang cảm xúc cho \textit{room}, còn
-\textit{rude} chỉ liên quan đến \textit{staff}. Nếu mô hình dùng toàn bộ
-biểu diễn câu (global context) như nhau cho cả hai khía cạnh, thông tin
-``nhiễu'' từ khía cạnh kia có thể làm giảm độ chính xác.
-\textbf{Local Context Focus (LCF)} \cite{zeng2019lcf, yang2021lcfatepc}
-giải quyết vấn đề này: với mỗi khía cạnh, tạo thêm một biểu diễn ``ngữ
-cảnh cục bộ'' -- trong đó các token \emph{xa} khía cạnh bị giảm trọng số
-hoặc loại bỏ -- rồi kết hợp biểu diễn cục bộ này với biểu diễn toàn cục
-gốc.
+Trong câu đa khía cạnh, từ cảm xúc của một khía cạnh thường xuất hiện
+gần khía cạnh đó. Phân loại dùng toàn bộ biểu diễn câu dễ bị nhiễu
+từ các khía cạnh khác. LCF \cite{zeng2019lcf, yang2021lcfatepc} tạo
+thêm một \textbf{luồng cục bộ} tập trung vào vùng xung quanh khía cạnh
+và kết hợp với luồng toàn cục.
 
-\subsection{Khoảng cách ngữ nghĩa tương đối (SRD)}
+\subsection{2.4.2.\; Khoảng cách ngữ nghĩa tương đối (SRD)}
 \label{subsec:srd}
 
-Đầu vào của cơ chế LCF là một vector chỉ thị khía cạnh nhị phân
-\texttt{lcf\_vec} $\in \{0,1\}^{L}$, trong đó các vị trí sub-word thuộc
-cụm từ khía cạnh được gán giá trị 1, các vị trí còn lại bằng 0. Từ
-vector này, mô hình xác định biên của khía cạnh ($a_{start}$, $a_{end}$),
-tâm và nửa độ rộng:
-
+Vector chỉ thị nhị phân \texttt{lcf\_vec} $\in\{0,1\}^{L}$ đánh dấu
+vị trí sub-word thuộc cụm khía cạnh. Từ đó xác định tâm và nửa độ rộng:
 \begin{equation}
-\text{center} = \frac{a_{start} + a_{end}}{2}, \qquad
-\text{half} = \left\lfloor \frac{a_{end} - a_{start} + 1}{2} \right\rfloor
-\label{eq:srd_center}
+\text{center} = \frac{a_{start}+a_{end}}{2},\qquad
+\text{half} = \left\lfloor\frac{a_{end}-a_{start}+1}{2}\right\rfloor
 \end{equation}
-
-\textbf{Khoảng cách ngữ nghĩa tương đối (Semantic-Relative Distance --
-SRD)} của token tại vị trí $i$ là khoảng cách từ token đó tới biên của
-khía cạnh (bằng 0 với mọi token nằm trong cụm khía cạnh):
-
+SRD của token tại vị trí $i$:
 \begin{equation}
-SRD_i = \max\!\Big(0,\; \big|\,i - \text{center}\,\big| - \text{half}\Big)
+SRD_i = \max\!\Big(0,\,\big|i-\text{center}\big|-\text{half}\Big)
 \label{eq:srd}
 \end{equation}
+Token có $SRD_i \le \alpha$ ($\alpha=5$, \texttt{SRD\_THRESHOLD}) thuộc
+\textbf{ngữ cảnh cục bộ}.
 
-Một ngưỡng $\alpha$ (siêu tham số \texttt{srd\_threshold}, mặc định
-$\alpha = 5$ theo bài báo gốc) được chọn trước: các token có
-$SRD_i \le \alpha$ được coi là thuộc ``ngữ cảnh cục bộ'' của khía cạnh.
-Trường hợp đặc biệt -- nếu câu không chứa token khía cạnh nào -- toàn bộ
-trọng số được đặt bằng 1, tức luồng cục bộ trùng với luồng toàn cục.
+\subsection{2.4.3.\; Hai biến thể: CDM và CDW}
 
-\subsection{Context Dynamic Mask (CDM)}
-
-CDM tạo một \textbf{mặt nạ nhị phân} $m \in \{0,1\}^{L}$, loại bỏ hoàn
-toàn (đặt về 0) các token nằm ngoài phạm vi $\alpha$:
-
+\textbf{Context Dynamic Mask (CDM)} -- mặt nạ nhị phân:
 \begin{equation}
-m_i =
-\begin{cases}
-1, & SRD_i \le \alpha \\
-0, & SRD_i > \alpha
-\end{cases}
+m_i = \begin{cases} 1 & SRD_i \le \alpha\\ 0 & SRD_i > \alpha \end{cases}
 \qquad O^{CDM} = H \odot m
 \label{eq:cdm}
 \end{equation}
 
-trong đó $\odot$ là phép nhân theo từng phần tử (mỗi $m_i$ được broadcast
-trên toàn bộ $d_h$ chiều của token $i$).
-
-\subsection{Context Dynamic Weight (CDW)}
-
-Thay vì loại bỏ ``cứng'', CDW gán trọng số \emph{giảm dần liên tục} theo
-khoảng cách cho các token ngoài phạm vi $\alpha$:
-
+\textbf{Context Dynamic Weight (CDW)} -- trọng số giảm dần liên tục (mặc định):
 \begin{equation}
-c_i =
-\begin{cases}
-1, & SRD_i \le \alpha \\[6pt]
-\dfrac{L - (SRD_i - \alpha)}{L}, & SRD_i > \alpha
-\end{cases}
+c_i = \begin{cases} 1 & SRD_i \le \alpha\\[4pt]
+\dfrac{L-(SRD_i-\alpha)}{L} & SRD_i > \alpha \end{cases}
 \qquad O^{CDW} = H \odot c
 \label{eq:cdw}
 \end{equation}
 
-với $L$ là độ dài chuỗi và $c_i$ được kẹp về đoạn $[0,1]$. CDW giữ lại
-một phần thông tin từ các token xa khía cạnh (thay vì xóa hoàn toàn như
-CDM) và cho phép gradient lan truyền mượt hơn. Trong cài đặt của khóa
-luận, \textbf{CDW là biến thể mặc định} (cờ \texttt{use\_cdm=False});
-CDM được dùng để khảo sát đối chứng.
+CDM cắt cứng -- giúp tập trung hơn cho nhãn thiểu số.
+CDW giảm mượt -- giữ thêm thông tin toàn cục, gradient lan truyền tốt hơn.
+Trong repo, \textbf{CDW là mặc định} (\texttt{use\_cdm=False}).
 
-\subsection{Kết hợp ngữ cảnh cục bộ và toàn cục (Feature Fusion)}
+\subsection{2.4.4.\; Kết hợp đặc trưng (Feature Fusion)}
 \label{subsec:fusion}
 
-Cuối cùng, biểu diễn cục bộ ($O^{CDW}$ hoặc $O^{CDM}$) và biểu diễn toàn
-cục ($H$) được \textbf{kết hợp} để mô hình vừa tập trung vào vùng khía
-cạnh vừa giữ được ngữ cảnh tổng thể. Chi tiết cài đặt của bước kết hợp
-này trong khóa luận được trình bày ở mục~\ref{subsec:lcf_in_repo}.
-
-\subsection{LCF trong kiến trúc FAST\_LCF\_BERT của khóa luận}
-\label{subsec:lcf_in_repo}
-
-Đầu ra của BERT, $H \in \mathbb{R}^{B \times L \times d}$, được chia
-thành hai luồng xử lý song song:
-
-\begin{enumerate}
-
-\item \textbf{Luồng cục bộ (local stream).} Từ SRD và ngưỡng $\alpha$,
-mô hình sinh vector trọng số $c \in [0,1]^{L}$ (CDW, mặc định) hoặc mặt
-nạ nhị phân $m \in \{0,1\}^{L}$ (CDM), mở rộng về $(B,L,1)$ để broadcast
-và nhân với biểu diễn toàn cục: $H_{local} = H \odot c$ (hoặc
-$H \odot m$). Biểu diễn cục bộ đi qua một lớp Multi-Head Self-Attention
-(\texttt{bert\_SA}) nhằm tăng cường tương tác giữa các token trong vùng
-ngữ cảnh liên quan đến khía cạnh.
-
-\item \textbf{Luồng toàn cục (global stream).} Biểu diễn đầu ra của BERT
-được giữ nguyên, $H_{global} = H$, nhằm bảo toàn ngữ cảnh toàn câu.
-
-\item \textbf{Kết hợp đặc trưng.} Hai luồng được ghép nối theo chiều đặc
-trưng rồi chiếu tuyến tính về lại chiều ẩn:
+Luồng cục bộ $H_{local} = H \odot c$ qua self-attention \texttt{bert\_SA};
+luồng toàn cục $H$ giữ nguyên. Hai luồng ghép và chiếu tuyến tính:
 \begin{equation}
-H_{fused} = \texttt{Linear}_{2d \rightarrow d}\big(\,[\,H_{local}\,;\,H_{global}\,]\,\big)
+H_{fused} = \texttt{Linear}_{2d\to d}\big([H_{local}\,;\,H]\big)
 \label{eq:fusion}
 \end{equation}
-
-\item \textbf{Mô hình hóa lại ngữ cảnh.} $H_{fused}$ qua dropout và một
-lớp self-attention thứ hai (\texttt{bert\_SA\_}), tiếp theo là lớp
-pooling tại token \texttt{[CLS]} (\texttt{\_SimplePooler}: Linear + Tanh)
-để thu vector đại diện câu.
-
-\item \textbf{Phân loại đa nhiệm.} Vector đại diện được dùng chung cho
-hai đầu phân loại: \texttt{dense\_sentiment} (cảm xúc: positive,
-negative, neutral) và \texttt{dense\_aspect\_cat} (nhóm khía cạnh:
-\texttt{SERVICE}, \texttt{FACILITY}, \texttt{AMENITY},
-\texttt{EXPERIENCE}, \texttt{BRANDING}, \texttt{LOYALTY}).
-
-\end{enumerate}
-
-Ngoài vai trò xây dựng luồng ngữ cảnh cục bộ, vector \texttt{lcf\_vec}
-còn được dùng trong module Token Merging (mục~\ref{sec:tome}) để bảo vệ
-các token thuộc cụm khía cạnh khỏi bị gộp (\texttt{protect\_aspect=True});
-khi xảy ra gộp, chỉ thị khía cạnh được lan truyền qua phép lấy cực đại
-($\max$). Đáng chú ý, Token Merging được áp dụng trên \emph{biểu diễn
-toàn cục chưa che mặt nạ} trước khi thực hiện LCF, còn LCF chỉ tác động
-lên luồng cục bộ -- nhờ đó mô hình vừa duy trì khả năng tập trung vào
-vùng khía cạnh, vừa tận dụng lợi ích giảm chi phí tính toán của ToMe.
+$H_{fused}$ tiếp tục qua self-attention \texttt{bert\_SA\_}, pooler
+(\texttt{[CLS]}), rồi vào hai đầu phân loại.
 
 % =====================================================================
-\section{Token Merging (ToMe): gộp token sau encoder}
+\section{2.5.\; Token Merging (ToMe)}
 \label{sec:tome}
 
-\subsection{Động lực}
+\subsection{2.5.1.\; Ý tưởng và thuật toán gốc}
 
-Như đã chỉ ra ở~\eqref{eq:attention}, chi phí self-attention tỉ lệ
-$O(n^2)$ theo độ dài chuỗi $n$. Trong ABSA, nhiều token (từ nối, dấu
-câu, subword lặp) mang rất ít thông tin phân biệt cảm xúc.
-\textbf{Token Merging (ToMe)} \cite{bolya2023tome}, ban đầu đề xuất cho
-Vision Transformer, gộp các token có biểu diễn \emph{tương tự nhau} thành
-một token đại diện (bằng phép trung bình), giảm độ dài chuỗi mà không cần
-huấn luyện lại và không thêm tham số. Khóa luận áp dụng ý tưởng này cho
-chuỗi token 1D (văn bản) \textbf{sau backbone BERT, trước khi áp dụng
-LCF}, qua module \texttt{ToMeSequenceMerger}
-(\texttt{token\_merging/tome\_1d.py}).
-
-\subsection{Thuật toán gốc: Bipartite Soft Matching}
-\label{subsec:tome_bipartite_orig}
-
-Ý tưởng cốt lõi của ToMe \cite{bolya2023tome} gồm các bước: (1) chia các
-token (trừ vị trí được bảo vệ) thành hai tập xen kẽ $A$ và $B$ theo chỉ
-số; (2) chuẩn hóa $L_2$ vector hidden state; (3) với mỗi $a \in A$, tìm
-$b \in B$ có độ tương đồng cosine lớn nhất:
-
+Token Merging \cite{bolya2023tome} gộp các token có biểu diễn \emph{tương
+đồng nhau} (đo bằng cosine similarity) thành một token đại diện bằng
+phép trung bình, giảm độ dài chuỗi mà không thêm tham số và không cần
+huấn luyện lại. Thuật toán gốc (bipartite) chia token thành hai nhánh
+xen kẽ $A$, $B$; mỗi $a \in A$ ghép với $b \in B$ có cosine lớn nhất:
 \begin{equation}
-\text{sim}(a,b) = \frac{\hat{x}_a \cdot \hat{x}_b}{\|\hat{x}_a\|\,\|\hat{x}_b\|}
+\text{sim}(a,b)=\frac{\hat{x}_a\cdot\hat{x}_b}{\|\hat{x}_a\|\|\hat{x}_b\|}
 \label{eq:cosine}
 \end{equation}
-
-(4) mỗi $b \in B$ chỉ được ghép tối đa một lần; (5) hai token ghép cặp
-$(a,b)$ được hợp nhất bằng trung bình:
-
+Hai token ghép cặp được hợp nhất:
 \begin{equation}
-x_{merged} = \tfrac{1}{2}(x_a + x_b)
+x_{merged} = \tfrac{1}{2}(x_a+x_b)
 \label{eq:merge_avg}
 \end{equation}
 
-token $b$ bị loại, token $a$ giữ giá trị $x_{merged}$. Lặp lại quy trình
-này qua nhiều vòng (\texttt{num\_merge\_steps}) sẽ giảm dần độ dài chuỗi.
-
-\subsection{Cài đặt \texttt{ToMeSequenceMerger}: ba chiến lược gộp}
+\subsection{2.5.2.\; Ba chiến lược gộp trong khóa luận}
 \label{subsec:tome_strategies}
 
-Module \texttt{ToMeSequenceMerger} tổng quát hóa ý tưởng trên thành ba
-chiến lược (tham số \texttt{merge\_strategy}), mỗi vòng giảm độ dài chuỗi
-khoảng một nửa.
+Module \texttt{ToMeSequenceMerger} (\texttt{token\_merging/tome\_1d.py})
+hiện thực ba chiến lược qua tham số \texttt{merge\_strategy}:
 
-\paragraph{(a) \texttt{"bipartite"} (mặc định).} Trong mỗi vòng: xác
-định \textbf{pool nội bộ} (các vị trí không thuộc \texttt{[CLS]},
-\texttt{[SEP]} và -- khi \texttt{protect\_aspect=True} -- không thuộc
-vùng khía cạnh); gán xen kẽ pool thành hai nhánh $A$, $B$; mỗi token $A$
-chọn token $B$ có cosine~\eqref{eq:cosine} lớn nhất (mỗi $B$ tối đa một
-lần); hợp nhất theo~\eqref{eq:merge_avg}. Vector \texttt{lcf\_vec}
-\textbf{không} tham gia chọn cặp -- sau khi gộp,
-$\text{lcf}[\text{src}] = \max(\text{lcf}[\text{src}], \text{lcf}[\text{dst}])$.
+\begin{description}
+  \item[\texttt{bipartite}] (mặc định) Bipartite cosine matching theo
+    ToMe CVPR 2023. Chia pool nội bộ thành $A$/$B$ xen kẽ; mỗi $a \in A$
+    ghép với $b \in B$ tương đồng nhất (mỗi $b$ tối đa một lần).
 
-\paragraph{(b) \texttt{"sequential\_local"}.} Quét chuỗi trái$\to$phải;
-tại mỗi token $i$, so sánh cosine với hàng xóm trái và phải gần nhất rồi
-``gập'' về phía hàng xóm giống nhất. Các vị trí \textbf{ranh giới LCF} --
-nơi $\text{lcf}_j < 0.5$ và $\text{lcf}_{j+1} > 0.5$ (chuyển từ ngoài vào
-vùng khía cạnh) -- được đánh dấu \texttt{mid\_sep} và \textbf{không} bị
-gộp, nhằm giữ nguyên ranh giới giữa ngữ cảnh và vùng khía cạnh. Chiến
-lược này không cần tính ma trận tương đồng toàn cục nên chi phí thấp hơn,
-nhưng phụ thuộc thứ tự quét.
+  \item[\texttt{sequential\_local}] Quét trái$\to$phải; mỗi token so
+    sánh cosine với hàng xóm trái/phải gần nhất, gập về phía tương đồng
+    hơn. Ranh giới vùng khía cạnh (\texttt{mid\_sep}: $\text{lcf}_j{<}0.5$
+    và $\text{lcf}_{j+1}{>}0.5$) được bảo vệ, không bị gộp.
 
-\paragraph{(c) \texttt{"attention\_weighted"}.} Tận dụng trọng số
-attention để ưu tiên gộp các token \emph{ít quan trọng nhất}: xếp hạng
-token theo attention tăng dần; lặp lại việc chọn token attention thấp
-nhất (chưa bị loại, không thuộc vùng khía cạnh, không thuộc top 25\%
-attention) rồi gộp vào hàng xóm có cosine cao nhất. Bốn nhóm được bảo vệ
-khỏi bị loại: \texttt{[CLS]}, \texttt{[SEP]}, token vùng khía cạnh
-($\text{lcf} > 0.5$), và token attention top 25\%. Đây là chiến lược giữ
-thông tin quan trọng tốt nhất cho ABSA, nhưng đòi hỏi tín hiệu attention
-làm đầu vào phụ.
+  \item[\texttt{attention\_weighted}] Xếp hạng token theo attention tăng
+    dần; lặp lại chọn token attention thấp nhất (chưa loại, không được
+    bảo vệ) rồi gộp vào hàng xóm cosine cao nhất. Bảo vệ: \texttt{[CLS]},
+    \texttt{[SEP]}, token khía cạnh ($\text{lcf}{>}0.5$), token attention
+    top 25\%.
+\end{description}
 
-\subsection{Resize: khôi phục độ dài chuỗi}
-\label{subsec:tome_resize}
+Cả ba chiến lược đều bảo vệ \texttt{[CLS]}, \texttt{[SEP]} và token
+vùng khía cạnh (\texttt{protect\_aspect=True}). Sau khi gộp, chỉ thị
+khía cạnh lan truyền theo phép $\max$:
+$\texttt{lcf}[src] = \max(\texttt{lcf}[src],\,\texttt{lcf}[dst])$.
 
-Sau khi gộp, chuỗi có độ dài $L' \le L$. Trong khóa luận, kết quả gộp
-luôn được \textbf{nội suy tuyến tính trở lại độ dài gốc $L$}
-(\texttt{resize=True}, dùng \texttt{F.interpolate} với
-\texttt{mode="linear"}) cho cả hidden states và \texttt{lcf\_vec}. Nhờ
-đó, các lớp phía sau (LCF, self-attention, pooler) giữ nguyên kiến trúc
-và độ dài đầu vào không đổi, cho phép cô lập và \textbf{đo trực tiếp ảnh
-hưởng của việc gộp token lên chất lượng biểu diễn}, tách biệt khỏi các
-yếu tố khác.
+\subsection{2.5.3.\; Hai chế độ sau gộp: resize và compact}
+\label{subsec:tome_modes}
+
+\begin{description}
+  \item[\texttt{resize=True}] Sau khi gộp xuống $L'$, nội suy tuyến tính
+    (\texttt{F.interpolate, mode="linear"}) cả hidden states và
+    \texttt{lcf\_vec} trở lại độ dài gốc $L$. Đầu ra luôn có shape
+    $(B, L, d_h)$ -- các lớp sau giữ nguyên kiến trúc. \textbf{Mục đích:}
+    cô lập và đo ảnh hưởng của thao tác gộp lên chất lượng biểu diễn,
+    không đo tăng tốc.
+
+  \item[\texttt{resize=False} (compact)] Giữ nguyên chuỗi rút gọn độ
+    dài $L' < L$, đệm theo $L'_{\max}$ của batch. Các lớp self-attention
+    phía sau nhận chuỗi ngắn hơn -- đây là cơ chế thực sự giảm chi phí
+    tính toán. \textbf{Hạn chế:} mỗi câu/cấu hình có $L'$ khác nhau,
+    cần đồng bộ hóa batch và cập nhật attention mask.
+
+  \item[\texttt{pre\_bert}] (hướng phát triển) Gộp token ngay ở mức
+    embedding, \emph{trước} 12 lớp Transformer backbone. Đây là đòn bẩy
+    tốc độ lớn nhất vì rút ngắn chuỗi cho toàn bộ phần $O(n^2)$ của
+    backbone. Mã hỗ trợ sẵn (\texttt{\_pre\_bert\_merge}) nhưng chưa
+    đưa vào bộ cấu hình chính.
+\end{description}
+
+Toàn bộ thực nghiệm của khóa luận sử dụng \textbf{resize=True}; compact
+và pre-BERT ToMe là hướng phát triển (Chương~\ref{chap:ketluan}).
 
 % =====================================================================
-\section{Kiến trúc tổng thể: FAST\_LCF\_BERT kết hợp Token Merging}
-\label{sec:overall_arch}
+\section{2.6.\; Huấn luyện đa nhiệm và hàm mất mát}
+\label{sec:multitask_theory}
 
-\subsection{Pipeline tổng thể}
+\texttt{FastLcfBertMultiTask} dự đoán đồng thời Sentiment (3 lớp) và
+Aspect Category (6 lớp). Hàm mất mát tổng:
+\begin{equation}
+\mathcal{L} = w_s\,\ell_{\text{CE}}(f_s(h),y^{(s)})
+  + w_c\,\mathbbm{1}[\neg\text{supp}]\cdot\ell_{\text{CE}}(f_c(h),y^{(c)})
+\label{eq:mt_loss}
+\end{equation}
+Mẫu \textit{supplement} (\texttt{is\_supplement=True}) chỉ tham gia
+hạng thứ nhất -- đầu phân loại category không học trên mẫu bổ trợ.
+Cả hai thành phần dùng \textbf{trọng số lớp nghịch đảo tần suất}
+$w_k = N/(C\cdot n_k)$ để giảm ảnh hưởng mất cân bằng.
 
-Hình~\ref{fig:pipeline} minh họa pipeline tổng thể của
-\texttt{FastLcfBertMultiTask}, kết hợp backbone Transformer
-(mục~\ref{sec:plm}), Token Merging (mục~\ref{sec:tome}) và LCF
-(mục~\ref{sec:lcf}).
-
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}[
-  node distance=0.5cm and 0.9cm,
-  block/.style={rectangle, draw, rounded corners, align=center,
-                 minimum height=0.85cm, minimum width=3.2cm, font=\small},
-  optblock/.style={block, dashed},
-  arr/.style={-{Stealth[length=2.2mm]}, thick}
-]
-  \node[block] (input) {Input: input\_ids,\\attention\_mask, lcf\_vec};
-  \node[block, below=of input] (bert) {Backbone Transformer (BERT)\\$H \in \mathbb{R}^{L\times d_h}$};
-  \node[optblock, below=of bert] (tome) {ToMe (tùy chọn)\\bipartite / sequential\_local /\\attention\_weighted\\$\to H' \in \mathbb{R}^{L'\times d_h}$};
-  \node[block, below=of tome] (lcf) {LCF: $H_{local} = H' \odot c$\\(CDW mặc định / CDM)};
-  \node[block, below=of lcf] (sa1) {Self-Attention (\texttt{bert\_SA})};
-  \node[block, below=of sa1] (fusion) {Concat$(H_{local}, H')$\\$\to$ Linear($2d\!\to\!d$)};
-  \node[block, below=of fusion] (sa2) {Self-Attention (\texttt{bert\_SA\_})};
-  \node[block, below=of sa2] (pool) {Pooler (lấy [CLS])};
-  \node[block, below=of pool] (head) {Classifier heads\\sentiment + aspect category};
-
-  \draw[arr] (input) -- (bert);
-  \draw[arr] (bert) -- (tome);
-  \draw[arr] (tome) -- (lcf);
-  \draw[arr] (lcf) -- (sa1);
-  \draw[arr] (sa1) -- (fusion);
-  \draw[arr] (fusion) -- (sa2);
-  \draw[arr] (sa2) -- (pool);
-  \draw[arr] (pool) -- (head);
-
-  % nhánh global context đi vòng tới fusion
-  \draw[arr] (tome.east) -- ++(2.7,0) |- (fusion.east);
-\end{tikzpicture}
-\caption{Pipeline tổng thể của \texttt{FastLcfBertMultiTask}. Khối ToMe
-(nét đứt) là thành phần tùy chọn, được chèn ngay sau backbone và trước
-bước áp dụng LCF; biểu diễn toàn cục $H'$ đi vòng tới bước Fusion.}
-\label{fig:pipeline}
-\end{figure}
-
-\subsection{Vị trí chèn Token Merging và các lựa chọn thiết kế}
-
-Một quyết định thiết kế quan trọng là \textbf{chèn ToMe ngay sau backbone
-và trước LCF}, thay vì xen giữa các lớp của backbone hoặc sau toàn bộ
-pipeline LCF, vì:
+% =====================================================================
+\section{2.7.\; Độ đo đánh giá}
+\label{sec:metrics_theory}
 
 \begin{itemize}
-  \item Backbone (BERT) đã được \textbf{tiền huấn luyện sẵn}; chèn ToMe
-        vào giữa các lớp sẽ làm thay đổi phân bố đầu vào của các lớp sau,
-        có thể phá vỡ biểu diễn đã học;
-  \item Chèn \emph{trước} LCF cho phép \texttt{lcf\_vec} được cập nhật
-        đồng bộ theo các token đã gộp (qua quy tắc $\max$,
-        mục~\ref{subsec:tome_strategies}), để lớp LCF phía sau vẫn hoạt
-        động đúng ngữ nghĩa trên chuỗi rút gọn;
-  \item Gộp \emph{trước} khi tách biểu diễn cục bộ/toàn cục giúp cả hai
-        nhánh (Fusion) cùng làm việc trên một chuỗi đã rút gọn, tránh
-        phải đồng bộ độ dài.
+  \item \textbf{ATE F1}: exact match cụm từ khía cạnh (Precision/Recall/F1
+        ở mức micro trên cặp (câu, term)).
+  \item \textbf{Micro F1 (bộ ba)}: TP/FP/FN tổng hợp toàn cục -- nhạy
+        với nhãn phổ biến. Một bộ ba là TP khi $a=a^*\land c=c^*\land s=s^*$.
+  \item \textbf{Macro F1}: trung bình F1 từng lớp ghép -- phản ánh nhãn
+        thiểu số.
+  \item \textbf{Oracle Joint Acc}: cho trước aspect term gold, đo
+        \emph{trần} của bộ phân loại, tách biệt lỗi ATE.
+  \item \textbf{Recall}: dùng ở Bước 5 -- tỉ lệ bộ ba gold được tìm thấy.
 \end{itemize}
 
-Việc bảo vệ \texttt{[CLS]}, \texttt{[SEP]} và token vùng khía cạnh đảm
-bảo thông tin \emph{quan trọng nhất cho APC} (vị trí khía cạnh và biểu
-diễn tổng hợp câu) không bị mất, bất kể chiến lược gộp nào được chọn.
+% =====================================================================
+\section{2.8.\; Các hướng tiếp cận liên quan}
+\label{sec:related_work}
 
-\subsection{Mở rộng đa nhiệm: \texttt{FastLcfBertMultiTask}}
-\label{subsec:multitask}
+\paragraph{APC với Transformer.} BERT \cite{devlin2019bert} đặt nền
+tảng cho ABSA dạng SPC. FAST-LCF-BERT \cite{zeng2019lcf, li2020bertabsa}
+bổ sung luồng ngữ cảnh cục bộ, đạt kết quả state-of-the-art. GAS
+\cite{zhang2021gas} chuyển sang sinh bộ ba một bước bằng T5 -- module
+\texttt{gas/} trong repo là biến thể liên quan.
 
-\texttt{models/fast\_lcf\_bert\_multitask.py} mở rộng kiến trúc trên
-thành mô hình \textbf{đa nhiệm}, dự đoán đồng thời: \textbf{Sentiment}
-(3 lớp Positive/Negative/Neutral) -- nhánh chính, dùng cho mọi mẫu kể cả
-mẫu bổ trợ (supplement); và \textbf{Aspect Category} -- chỉ tính loss
-trên các mẫu chính (\texttt{is\_supplement=False}) thông qua
-\texttt{main\_mask}. Hai nhánh chia sẻ toàn bộ phần thân (backbone $\to$
-ToMe $\to$ LCF $\to$ Fusion $\to$ pooler), chỉ khác ở lớp tuyến tính cuối
-(\texttt{dense\_sentiment}, \texttt{dense\_aspect\_cat}). Hàm mất mát
-tổng:
+\paragraph{Token Merging.} ToMe \cite{bolya2023tome} áp dụng cho Vision
+Transformer; khóa luận chuyển thể cho NLP 1D với bổ sung bảo vệ token
+ngữ nghĩa (khía cạnh, CLS) và đề xuất hai chiến lược mới
+(\texttt{sequential\_local}, \texttt{attention\_weighted}).
 
-\begin{equation}
-\mathcal{L} = \mathcal{L}_{\text{sentiment}} + \mathbbm{1}[\text{main\_mask}] \cdot \mathcal{L}_{\text{aspect\_cat}}
-\label{eq:multitask_loss}
-\end{equation}
-
-với cả hai thành phần là \texttt{CrossEntropyLoss} có \textbf{trọng số
-lớp (class weights)} để xử lý mất cân bằng dữ liệu. Thiết kế đa nhiệm
-tận dụng tín hiệu giám sát phụ (nhóm khía cạnh) để biểu diễn ẩn học được
-thông tin tổng quát hơn, có khả năng cải thiện nhánh sentiment chính.
+\paragraph{Tách câu.} UOS (\texttt{uos/}) tách câu dài bằng LLM trước
+inference, cùng hướng thu hẹp ngữ cảnh với LCF nhưng ở mức văn bản thô.
 
 % =====================================================================
 \section*{Tóm tắt chương}
 \addcontentsline{toc}{section}{Tóm tắt chương}
 
-Chương này đã trình bày chuỗi nền tảng lý thuyết theo đúng trình tự xuất
-hiện trong kiến trúc cài đặt: (1) bài toán ABSA và các bài toán con, với
-trọng tâm là APC trên dữ liệu đánh giá khách sạn; (2) kiến trúc
-Transformer và self-attention -- nền tảng tính toán của BERT/T5, đồng
-thời là nguồn gốc của chi phí $O(n^2)$ mà Token Merging hướng tới giảm
-bớt; (3) hai mô hình tiền huấn luyện BERT (cho APC) và T5 (cho ATE);
-(4) cơ chế Local Context Focus với SRD, hai biến thể CDM/CDW và bước
-Fusion, trong đó cài đặt của khóa luận dùng \textbf{CDW làm mặc định};
-(5) Token Merging với ba chiến lược gộp (\texttt{bipartite},
-\texttt{sequential\_local}, \texttt{attention\_weighted}), trong đó chuỗi
-sau khi gộp luôn được nội suy trở lại độ dài gốc (\texttt{resize}) để cô
-lập và đánh giá ảnh hưởng của việc gộp lên chất lượng biểu diễn; và
-(6) kiến trúc tổng thể \texttt{FastLcfBertMultiTask}, nơi ToMe
-được chèn giữa backbone và LCF, cùng mở rộng đa nhiệm sentiment + aspect
-category. Đây là cơ sở để chương tiếp theo trình bày chi tiết phương
-pháp luận, thiết lập thực nghiệm và các kịch bản so sánh baseline với
-các biến thể Token Merging.
+Chương 2 trình bày cô đọng: (1) bài toán ABSA và cấu trúc bộ ba Joint
+Triplet; (2) Transformer -- nền tảng tính toán và nguồn gốc chi phí
+$O(n^2)$; (3) BERT (APC) và T5 (ATE) kèm kỹ thuật giải mã Beam Search
+($k=4$) và chuẩn hóa Levenshtein đảm bảo aspect term hợp lệ; (4) LCF
+với SRD, CDM/CDW và bước Fusion; (5) Token Merging với ba chiến lược
+và ba chế độ sau gộp (resize/compact/pre-BERT); (6) hàm mất mát đa
+nhiệm và các độ đo. Chương 3 trình bày chi tiết hiện thực và ví dụ
+minh họa.
