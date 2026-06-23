@@ -1,0 +1,134 @@
+﻿\documentclass[14pt]{extreport}
+\usepackage[utf8]{inputenc}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{xurl}
+\usepackage{fontspec}
+\usepackage[vietnamese]{babel}
+\setmainfont{Times New Roman}
+\usepackage{float}
+\usepackage{changepage}
+\usepackage{placeins} % đặt trong preamble
+\usepackage{amsmath, amssymb}
+\usepackage{indentfirst}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{tcolorbox}
+\tcbuselibrary{skins}
+\usepackage{eso-pic}
+\usepackage{fontawesome5}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{bbm}
+\usepackage{threeparttable}
+\usepackage{geometry}
+\geometry{
+  a4paper,
+  top=2cm,      % Tăng lên 3cm cho trang trọng
+  bottom=2cm,
+  left=2.5cm,   % Tăng lên 3.5cm theo chuẩn Bộ GD
+  right=2cm
+}
+\usepackage{hyperref}
+\hypersetup{
+    hidelinks,
+    colorlinks=true,
+    linkcolor=black,  % Màu link mục lục (đen để in không bị mờ)
+    filecolor=magenta,      
+    urlcolor=blue,
+    pdftitle={Báo cáo đề tài},
+    pdfpagemode=FullScreen,
+}
+
+\setcounter{secnumdepth}{-1}
+
+\begin{document}
+
+\tableofcontents
+
+\newpage
+\section{DANH MỤC KÝ HIỆU VÀ CHỮ VIẾT TẮT}
+Lĩnh vực NLP và Machine Learning:
+\begin{itemize}
+    \item ABSA - Aspect-Based Sentiment Analysis (Phân tích cảm xúc dựa trên khía cạnh)
+    \item NLP - Natural Language Processing (Xử lý ngôn ngữ tự nhiên)
+    \item LLM - Large Language Model (Mô hình ngôn ngữ lớn)
+    \item BERT - Bidirectional Encoder Representations from Transformers
+    \item RoBERTa - Robustly Optimized BERT Pretraining Approach
+    \item DeBERTa - Decoding-enhanced BERT with Disentangled Attention
+    \item DistilBERT - Distilled version of BERT
+    \item LoRA - Low-Rank Adaptation
+    \item QLoRA - Quantized Low-Rank Adaptation
+    \item PEFT - Parameter-Efficient Fine-Tuning
+    \item NSP - Next Sentence Prediction
+\end{itemize}
+
+Kỹ thuật và Định dạng:
+\begin{itemize}
+    \item GGUF - GPT-Generated Unified Format
+    \item NF4 - NormalFloat 4-bit
+    \item FP16 - Floating Point 16-bit
+    \item FP32 - Floating Point 32-bit
+    \item LCS - Longest Common Subsequence
+    \item JSON - JavaScript Object Notation
+    \item CSV - Comma-Separated Values
+    \item HTML - HyperText Markup Language
+    \item CUDA - Compute Unified Device Architecture
+    \item GPU - Graphics Processing Unit
+    \item VRAM - Video Random Access Memory
+\end{itemize}
+
+Độ đo đánh giá:
+\begin{itemize}
+    \item TP - True Positive
+    \item FP - False Positive
+    \item FN - False Negative
+\end{itemize}
+
+\newpage
+\listoftables
+\addcontentsline{toc}{section}{DANH MỤC BẢNG BIỂU}
+
+\newpage
+\listoffigures
+\addcontentsline{toc}{section}{DANH MỤC HÌNH ẢNH}
+
+\chapter*{TÓM TẮT LUẬN VĂN}
+\addcontentsline{toc}{chapter}{TÓM TẮT LUẬN VĂN}
+Phân tích cảm xúc dựa trên khía cạnh (Aspect-Based Sentiment Analysis — ABSA) là một bài toán quan trọng trong xử lý ngôn ngữ tự nhiên, với mục tiêu phân tích không chỉ cực tính cảm xúc chung của văn bản mà còn xác định thái độ cụ thể hướng đến từng khía cạnh (aspect) được nhắc đến. Mặc dù các mô hình ngôn ngữ lớn dựa trên kiến trúc Transformer đã đạt hiệu suất cao trong ABSA, chi phí tính toán của cơ chế self-attention tăng theo bình phương độ dài chuỗi, đặt ra thách thức về hiệu quả trong triển khai thực tế.
+
+Luận văn này đề xuất và nghiên cứu một phương pháp kết hợp Token Merging (ToMe) với cơ chế Local Context Focus (LCF) nhằm cải thiện hiệu quả tính toán trong khi duy trì chất lượng biểu diễn ngữ nghĩa cho bài toán ABSA. Cụ thể, ba chiến lược gộp token được thiết kế và so sánh: (i) Bipartite Matching — phân chia chuỗi token thành hai nhóm xen kẽ và ghép cặp dựa trên độ tương đồng cosine (theo phương pháp ToMe gốc, CVPR 2023); (ii) Sequential Local Merging — quét tuần tự từ trái sang phải, mỗi token hợp nhất với lân cận có độ tương đồng cao hơn; (iii) Attention-Weighted Merging — ưu tiên gộp các token có trọng số attention thấp trước, bảo vệ các vị trí có giá trị ngữ nghĩa cao (bao gồm vị trí khía cạnh được đánh dấu bởi LCF). Module LCF với cơ chế CDM/CDW được tích hợp để bảo vệ ngữ cảnh cục bộ quanh aspect term khỏi quá trình gộp, đảm bảo thông tin phân tích cảm xúc không bị mất.
+
+Mô hình được huấn luyện và đánh giá trên tập dữ liệu chuẩn SemEval 2016 Task 5 (REST16) theo kiến trúc đa nhiệm (multi-task) đồng thời giải quyết hai bài toán: Phân loại cực tính cảm xúc theo khía cạnh (Aspect Polarity Classification — APC) và Phân loại danh mục khía cạnh (Aspect Category Classification). Thực nghiệm được tiến hành với resize mode (giữ nguyên chiều dài chuỗi sau khi gộp bằng nội suy).
+
+Kết quả thực nghiệm cho thấy các chiến lược token merging được đề xuất có thể duy trì chất lượng phân loại cạnh tranh so với mô hình nền, đồng thời giảm số lượng token thực sự được xử lý qua các lớp tiếp theo. Nghiên cứu cũng chỉ ra rằng việc bảo vệ các vị trí đặc biệt ([CLS], [SEP]) và vị trí khía cạnh trong quá trình gộp là yếu tố then chốt để duy trì hiệu suất phân tích cảm xúc.
+
+Luận văn đóng góp: (1) phân tích hệ thống ba chiến lược token merging trong ngữ cảnh ABSA; (2) cơ chế tích hợp LCF-aware merging bảo vệ thông tin ngữ cảnh cục bộ; (3) kiến trúc đa nhiệm kết hợp APC và phân loại danh mục trên cùng một backbone; (4) bộ thực nghiệm đầy đủ với phân tích per-class F1 theo cực tính và danh mục khía cạnh.
+
+\input{mo_dau}
+
+\input{co_so_ly_thuyet}
+
+\input{phuong_phap_thuc_nghiem}
+
+\input{ket_qua_thuc_nghiem}
+
+\input{ket_luan}
+
+\renewcommand{\bibname}{TÀI LIỆU THAM KHẢO}
+\addcontentsline{toc}{section}{TÀI LIỆU THAM KHẢO}
+\bibliographystyle{plain}
+\bibliography{references}
+
+\section{LINK CODE GITHUB}
+\href{https://github.com/hotuyen21pt/KLTN-Token-Merging}{
+\faGithub\space github.com/hotuyen21pt/KLTN-Token-Merging}
+
+
+
+\end{document}

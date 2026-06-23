@@ -1,0 +1,132 @@
+% =====================================================================
+%  Phụ lục
+% =====================================================================
+\chapter{Cấu trúc mã nguồn và hướng dẫn tái lập}
+\label{app:code}
+
+\section{Ánh xạ mã nguồn -- nội dung luận văn}
+
+\begin{table}[H]
+\centering
+\caption{File mã nguồn chính trong \texttt{thesis\_apc\_baseline}}
+\label{tab:app_files}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Đường dẫn} & \textbf{Vai trò} \\
+\midrule
+\texttt{models/fast\_lcf\_bert\_multitask.py} & APC: LCF + ToMe + đa nhiệm \\
+\texttt{token\_merging/tome\_1d.py} & Ba chiến lược Token Merging \\
+\texttt{experiments/run\_joint\_experiments.py} & Huấn luyện 12 cấu hình \\
+\texttt{experiments/eval\_joint\_triplet.py} & Đánh giá bộ ba Joint/Pipeline \\
+\texttt{src/train.py}, \texttt{src/inference.py} & ATE T5 \\
+\texttt{pipeline\_inference.py} & Inference đầu-cuối \\
+\texttt{dataset\_utils.py} & Parser \texttt{.apc}, supplement \\
+\texttt{runs\_ate/*.csv} & Kết quả thực nghiệm \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Lệnh tái lập thí nghiệm}
+
+\begin{lstlisting}[language=bash,caption={Huấn luyện và đánh giá}]
+# ATE
+python src/train.py --data-dir dataset --output-dir checkpoints/gas_t5_ate
+
+# APC (12 configs)
+python experiments/run_joint_experiments.py
+
+# Danh gia Joint BERT / T5
+python experiments/eval_joint_triplet.py --model-type bert
+python experiments/eval_joint_triplet.py --model-type t5
+
+# Tao hinh cho luan van
+python scripts/generate_thesis_figures.py
+\end{lstlisting}
+
+\chapter{Hướng dẫn tạo hình ảnh cho luận văn}
+\label{app:figures}
+
+Các hình được tham chiếu trong Chương~\ref{chap:ketqua} và Chương~\ref{chap:phuongphap}
+được sinh bởi \texttt{scripts/generate\_thesis\_figures.py}. Chạy từ thư mục gốc repo:
+
+\begin{lstlisting}[language=bash]
+pip install matplotlib pandas seaborn
+python scripts/generate_thesis_figures.py
+\end{lstlisting}
+
+Output lưu tại \texttt{figures/}:
+
+\begin{itemize}
+  \item \texttt{fig\_label\_distribution.pdf} -- phân bố nhãn train;
+  \item \texttt{fig\_micro\_f1\_comparison.pdf} -- cột Micro F1 12 configs;
+  \item \texttt{fig\_train\_time\_vs\_f1.pdf} -- scatter thời gian vs F1;
+  \item \texttt{fig\_per\_label\_f1\_heatmap.pdf} -- heatmap F1 theo nhãn;
+  \item \texttt{fig\_pipeline\_architecture.pdf} -- sơ đồ pipeline (tùy chọn).
+\end{itemize}
+
+Sơ đồ TikZ trong \texttt{co\_so\_ly\_thuyet.tex} và \texttt{phuong\_phap\_thuc\_nghiem.tex}
+biên dịch trực tiếp bởi \LaTeX{} (không cần script).
+
+\chapter{Bảng F1 theo nhãn (config tốt nhất BERT Joint)}
+\label{app:perlabel}
+
+Config: \texttt{lcf\_seq\_cdm\_resize}, Joint, BERT (Micro F1 $=71.18$).
+Nguồn: \texttt{runs\_ate/eval\_joint\_triplet\_BERT.csv}.
+
+\begin{table}[H]
+\centering
+\caption{F1 từng nhãn ghép (\%) -- \texttt{lcf\_seq\_cdm\_resize}}
+\label{tab:app_perlabel}
+\small
+\begin{tabular}{@{}lc|lc@{}}
+\toprule
+\textbf{Nhãn} & \textbf{F1} & \textbf{Nhãn} & \textbf{F1} \\
+\midrule
+AMENITY\_negative & 42.86 & FACILITY\_negative & 66.67 \\
+AMENITY\_neutral  & 85.71 & FACILITY\_neutral  & 0.00 \\
+AMENITY\_positive & 75.97 & FACILITY\_positive & 70.39 \\
+BRANDING\_neutral & 0.00  & LOYALTY\_positive  & 76.92 \\
+BRANDING\_positive& 52.63 & SERVICE\_negative  & 33.33 \\
+EXPERIENCE\_negative & 0.00 & SERVICE\_positive & 77.65 \\
+EXPERIENCE\_positive & 67.86 & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\chapter{Thuật toán Token Merging (pseudocode)}
+\label{app:tome_algo}
+
+\begin{lstlisting}[caption={Attention-weighted ToMe (tom tat tu tom\_e\_1d.py)}]
+for step in range(num_merge_steps):
+    protected = {CLS, SEP} | aspect_positions(lcf_vec)
+    rank tokens by attention (ascending)
+    while merges < budget:
+        pick lowest-attention unprotected token i
+        j = argmax_j cosine(h[i], h[j]) among neighbors
+        h[j] = (h[i] + h[j]) / 2
+        lcf_vec[j] = max(lcf_vec[i], lcf_vec[j])
+        remove token i
+if resize:
+    h, lcf_vec = linear_interpolate_to_length(L)
+\end{lstlisting}
+
+\chapter{Mở rộng lý thuyết bổ sung}
+\label{app:theory_extra}
+
+\subsection{Generative Aspect-based Sentiment (GAS)}
+
+GAS \cite{zhang2021gas} biểu diễn ABSA dưới dạng sinh văn bản một bước:
+\texttt{"(term, CATEGORY, sentiment); ..."}. Module \texttt{gas/} trong repo hiện thực
+biến thể này; so sánh quantitative ở Bước 3 (Chương~\ref{sec:eval_step3}).
+
+\subsection{Unit Opinion Sentence (UOS)}
+
+UOS tách câu dài thành các \emph{unit} ngắn bằng LLM (Qwen 8B qua Ollama) trước khi
+chạy ATE/APC, nhằm thu hẹp ngữ cảnh. Đánh giá ở Bước 5 (\ref{sec:eval_step5}).
+
+\subsection{Độ phức tạp tính toán}
+
+Self-attention: $O(L^2 d)$. ToMe post-BERT với resize: thêm $O(k \cdot L d)$ cho $k$ bước
+gộp + $O(L d)$ nội suy. Pre-BERT ToMe (hướng phát triển): giảm $L$ cho toàn bộ 12 lớp
+Transformer -- tiết kiệm $\approx (L'/L)^2$ trên phần backbone.

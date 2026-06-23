@@ -1,620 +1,571 @@
 % =====================================================================
-%  Chương III — PHƯƠNG PHÁP THỰC HIỆN
-%  File này được thiết kế để \input vào file luận văn chính.
-%  Gói cần khai báo ở preamble của main.tex (đã dùng ở Chương II):
-%     \usepackage{amsmath, amssymb}
-%     \usepackage{bbm}            % cho \mathbbm{1}
-%     \usepackage{booktabs}
-%     \usepackage{float}          % cho [H]
-%     \usepackage{hyperref}
-%     \usepackage{tikz}
-%     \usetikzlibrary{arrows.meta, positioning, fit, backgrounds}
-%  Nội dung được đối chiếu trực tiếp với mã nguồn trong repo:
-%     dataset_utils.py                     (parser .apc, xây dựng lcf_vec, supplement)
-%     models/fast_lcf_bert_multitask.py    (kiến trúc APC: LCF + ToMe + đa nhiệm)
-%     token_merging/tome_1d.py             (ba chiến lược Token Merging)
-%     experiments/run_joint_experiments.py (huấn luyện đa nhiệm, CONFIGS, loss)
-%     experiments/eval_joint_triplet.py    (đánh giá bộ ba, Joint/Pipeline)
-%     src/ , gas/                          (ATE bằng T5)
+%  Chương 3 — PHƯƠNG PHÁP THỰC HIỆN  (bản chi tiết, bám sát repo)
+%  Gói: amsmath, amssymb, bbm, booktabs, float, hyperref,
+%        tikz + arrows.meta/positioning/fit/backgrounds/calc
 % =====================================================================
-% Ký hiệu có/không trong bảng cấu hình (dùng amssymb cho \checkmark).
 \providecommand{\cmark}{\ensuremath{\checkmark}}
 \providecommand{\xmark}{\ensuremath{\times}}
 
-\chapter{III. PHƯƠNG PHÁP THỰC HIỆN}
+\chapter{III. Phương pháp thực hiện}
 \label{chap:phuongphap}
 
-Chương này trình bày cách hệ thống được thiết kế và hiện thực. Mục~\ref{sec:overall}
-mô tả kiến trúc tổng thể dưới dạng một chuỗi các \emph{stage} xử lý, giải
-thích vai trò của từng stage và đi sâu vào chi tiết stage phân loại.
-Mục~\ref{sec:methods} trình bày hai phương pháp kỹ thuật cốt lõi được
-tích hợp vào kiến trúc -- cơ chế tập trung ngữ cảnh cục bộ (LCF) và kỹ
-thuật gộp token (Token Merging). Các mục còn lại trình bày bộ dữ liệu,
-hàm mất mát, thiết lập huấn luyện và phương pháp đánh giá. Mọi mô tả đều
+Chương này trình bày kiến trúc hệ thống (Mục~\ref{sec:overall}), hai
+phương pháp kỹ thuật cốt lõi LCF và Token Merging
+(Mục~\ref{sec:methods}), thiết lập huấn luyện (Mục~\ref{sec:training}),
+và các ví dụ minh họa chi tiết (Mục~\ref{sec:examples}). Mỗi mô tả
 được đối chiếu trực tiếp với mã nguồn trong repo.
 
 % =====================================================================
-\section{Kiến trúc tổng thể}
+\section{3.1. Kiến trúc tổng thể}
 \label{sec:overall}
 
-\subsection{Bài toán và luồng xử lý đầu-cuối}
+\subsection{3.1.1. Luồng xử lý đầu-cuối}
 
-Hệ thống giải quyết bài toán \textbf{trích xuất bộ ba}
-(\textit{Joint Triplet Extraction}): từ một câu đánh giá khách sạn $x$,
-trích xuất tập
+Hệ thống giải quyết bài toán \textbf{Joint Triplet Extraction}: từ câu
+đánh giá $x$, trích xuất tập bộ ba
+$\mathcal{T}=\{(a_i,c_i,s_i)\}_{i=1}^m$ gồm aspect term, category và
+sentiment. Hệ thống được tổ chức thành \textbf{bốn stage nối tiếp}
+(Hình~\ref{fig:overall_pipeline}).
 
-\begin{equation}
-\mathcal{T} = \{(a_i, c_i, s_i)\}_{i=1}^{m}
-\label{eq:triplet}
-\end{equation}
-
-với $a_i$ là \textit{aspect term} (cụm từ khía cạnh), $c_i$ là
-\textit{aspect category} (\texttt{AMENITY}, \texttt{BRANDING},
-\texttt{EXPERIENCE}, \texttt{FACILITY}, \texttt{LOYALTY},
-\texttt{SERVICE}) và $s_i$ là cực tính (\textit{Positive} /
-\textit{Negative} / \textit{Neutral}). Một bộ ba được tính đúng khi và
-chỉ khi \textbf{cả ba thành phần} khớp nhãn gold.
-
-Hệ thống được tổ chức thành bốn stage nối tiếp
-(Hình~\ref{fig:overall}): tiền xử lý, trích xuất khía cạnh (ATE), phân
-loại nhóm khía cạnh và cảm xúc (APC), và tổng hợp bộ ba.
-
+% ── Hình 1: Kiến trúc bốn stage ─────────────────────────────────────
+% [CẦN HÌNH] fig_pipeline_architecture.pdf
+% Script: scripts/generate_thesis_figures.py -> fig_pipeline_architecture()
+% Hoặc TikZ dưới đây biên dịch trực tiếp (không cần script):
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  node distance=0.5cm and 1.0cm,
-  stage/.style={rectangle, draw, rounded corners, align=center, fill=black!4,
-                minimum height=1.0cm, minimum width=8.0cm, font=\small},
-  io/.style={rectangle, draw, dashed, align=center, rounded corners,
-             minimum height=0.8cm, minimum width=6.0cm, font=\small\itshape},
-  arr/.style={-{Stealth[length=2.2mm]}, thick}
+  node distance=0.55cm and 1.0cm,
+  stage/.style={rectangle, draw, rounded corners=4pt, align=center,
+                fill=blue!5, minimum height=1.1cm, minimum width=8.5cm,
+                font=\small},
+  io/.style={rectangle, draw=gray, dashed, align=center, rounded corners=3pt,
+             minimum height=0.7cm, minimum width=5.5cm, font=\small\itshape},
+  arr/.style={-{Stealth[length=2.5mm]}, thick},
+  lbl/.style={font=\scriptsize, midway, right=2pt}
 ]
-  \node[io] (in) {Câu đánh giá khách sạn (input)};
+  \node[io] (in) {Câu đánh giá khách sạn};
   \node[stage, below=of in] (s1)
-       {\textbf{Stage 1 -- Tiền xử lý \& biểu diễn đầu vào}\\
-        Token hóa SPC \texttt{[CLS] câu [SEP] aspect [SEP]} + dựng vector \texttt{lcf\_vec}};
+       {\textbf{Stage 1 — Tiền xử lý \& biểu diễn đầu vào}\\
+        Token hóa SPC \texttt{[CLS] câu [SEP] aspect [SEP]}
+        + dựng \texttt{lcf\_vec}};
   \node[stage, below=of s1] (s2)
-       {\textbf{Stage 2 -- ATE (T5)}\\
+       {\textbf{Stage 2 — ATE (T5AspectExtractor)}\\
         Sinh có điều kiện danh sách aspect term + chuẩn hóa Levenshtein};
   \node[stage, below=of s2] (s3)
-       {\textbf{Stage 3 -- APC (\texttt{FastLcfBertMultiTask})}\\
-        Backbone $\to$ Token Merging $\to$ LCF $\to$ phân loại đa nhiệm};
+       {\textbf{Stage 3 — APC (FastLcfBertMultiTask)}\\
+        Backbone $\to$ Token Merging (tùy chọn) $\to$ LCF $\to$ đa nhiệm};
   \node[stage, below=of s3] (s4)
-       {\textbf{Stage 4 -- Tổng hợp bộ ba}\\
-        Ghép $(a_i, c_i, s_i)$};
-  \node[io, below=of s4] (out) {Tập bộ ba $\mathcal{T} = \{(a_i, c_i, s_i)\}$ (output)};
+       {\textbf{Stage 4 — Tổng hợp bộ ba}\\
+        Ghép $(a_i,\,c_i,\,s_i)$ thành tập $\mathcal{T}$};
+  \node[io, below=of s4] (out) {Tập bộ ba $\mathcal{T}=\{(a_i,c_i,s_i)\}$};
 
-  \draw[arr] (in) -- (s1);
-  \draw[arr] (s1) -- (s2);
-  \draw[arr] (s2) -- (s3) node[midway, right, font=\scriptsize] {aspect terms};
-  \draw[arr] (s3) -- (s4) node[midway, right, font=\scriptsize] {(category, sentiment)};
-  \draw[arr] (s4) -- (out);
+  \draw[arr] (in)  -- (s1);
+  \draw[arr] (s1)  -- (s2);
+  \draw[arr] (s2)  -- (s3) node[lbl] {aspect terms};
+  \draw[arr] (s3)  -- (s4) node[lbl] {(category, sentiment)};
+  \draw[arr] (s4)  -- (out);
 \end{tikzpicture}
-\caption{Kiến trúc tổng thể của hệ thống trích xuất bộ ba, tổ chức thành
-bốn stage nối tiếp. Đường \texttt{aspect terms} từ Stage 2 sang Stage 3
-là luồng của kiến trúc Pipeline; ở kiến trúc Joint, aspect term được lấy
-trực tiếp từ nhãn gold (mục~\ref{subsec:joint_pipeline}).}
-\label{fig:overall}
+\caption{Kiến trúc tổng thể bốn stage. Ở kiến trúc \textbf{Joint}, aspect
+term được lấy từ nhãn gold (stage 2 bỏ qua); ở \textbf{Pipeline}, stage 2
+chạy thực sự và aspect term dự đoán được đưa vào stage 3.}
+\label{fig:overall_pipeline}
 \end{figure}
 
-\subsection{Giải thích từng stage}
+\subsection{3.1.2. Giải thích từng stage}
 
-\paragraph{Stage 1 — Tiền xử lý và biểu diễn đầu vào.}
-Mỗi mẫu được token hóa theo định dạng \textbf{Sentence-Pair
-Classification (SPC)}, ghép câu (segment A) với cụm khía cạnh
-(segment B): \texttt{[CLS] <câu> [SEP] <aspect term> [SEP]}, độ dài tối
-đa $L = 128$. Đồng thời, hệ thống dựng \textbf{vector chỉ thị khía cạnh}
-\texttt{lcf\_vec} $\in \{0,1\}^{L}$: dựa trên \texttt{offset\_mapping}
-của tokenizer, mỗi token thuộc segment A có khoảng ký tự \emph{giao} với
-khoảng ký tự của cụm khía cạnh được gán 1, còn lại bằng 0. Nếu cụm khía
-cạnh bị cắt khỏi segment A, hệ thống quay lui dùng
-\texttt{token\_type\_ids} (bản sao khía cạnh ở segment B) làm chỉ thị.
-Vector này là tín hiệu đầu vào cho phương pháp LCF (mục~\ref{subsec:lcf}).
+\paragraph{Stage 1 — Tiền xử lý.}
+Mỗi cặp (câu, aspect term) được token hóa theo định dạng \textbf{Sentence-Pair
+Classification (SPC)}:
+\[\texttt{[CLS]}\ \underbrace{\text{câu}}_{\text{segment A}}\ \texttt{[SEP]}\
+\underbrace{\text{aspect term}}_{\text{segment B}}\ \texttt{[SEP]},\quad L_{\max}=128.\]
+Đồng thời, \textbf{vector chỉ thị khía cạnh} \texttt{lcf\_vec}
+$\in\{0,1\}^{128}$ được xây dựng bằng cách so sánh \texttt{offset\_mapping}
+của tokenizer với khoảng ký tự của cụm khía cạnh trong segment A.
+Nếu cụm khía cạnh không xuất hiện trong segment A (cắt quá độ dài),
+hệ thống dùng \texttt{token\_type\_ids} của segment B làm chỉ thị dự phòng.
 
-\paragraph{Stage 2 — Trích xuất khía cạnh (ATE) bằng T5.}
-Bài toán ATE được hình thức hóa thành \textbf{sinh có điều kiện}: mô hình
-\texttt{T5AspectExtractor} (backbone \texttt{t5-base}) nhận câu và sinh
-trực tiếp danh sách cụm từ khía cạnh theo định dạng GAS, ví dụ
-\texttt{"(phòng); (nhân viên); (thang máy)"}; câu không có khía cạnh sinh
-ra \texttt{"none"}. Quá trình sinh dùng beam search (beam $=4$,
-\texttt{max\_len} $=64$). Vì chuỗi sinh có thể lệch khỏi văn bản gốc, đầu
-ra được \textbf{chuẩn hóa bằng đối sánh n-gram theo khoảng cách
-Levenshtein}, ánh xạ mỗi cụm từ về chuỗi con gần nhất thực sự xuất hiện
-trong câu.
+\paragraph{Stage 2 — ATE bằng T5.}
+\texttt{T5AspectExtractor} nhận câu và sinh danh sách khía cạnh theo
+định dạng GAS: \texttt{"(term1); (term2)"} hoặc \texttt{"none"}.
+Beam search với $\text{beam}=4$, \texttt{max\_len}=64. Đầu ra được
+\textbf{chuẩn hóa Levenshtein} để ánh xạ về chuỗi con thực sự có trong
+câu, tránh lỗi chính tả hay subword không tồn tại.
 
-\paragraph{Stage 3 — Phân loại (APC) đa nhiệm.}
-Với mỗi cặp (câu, aspect term), mô hình \texttt{FastLcfBertMultiTask}
-dự đoán đồng thời nhóm khía cạnh và cảm xúc. Đây là stage trung tâm, nơi
-hai phương pháp LCF và Token Merging được tích hợp; chi tiết kiến trúc
-được trình bày ở mục~\ref{subsec:apc_detail}.
+\paragraph{Stage 3 — APC đa nhiệm.}
+Với mỗi cặp (câu, aspect term), \texttt{FastLcfBertMultiTask} dự đoán
+đồng thời category và sentiment. Đây là stage trung tâm -- chi tiết ở
+Mục~\ref{subsec:apc_arch}.
 
-\paragraph{Stage 4 — Tổng hợp bộ ba.}
-Aspect term (từ Stage 2 hoặc nhãn gold) được ghép với nhóm khía cạnh và
-cảm xúc (từ Stage 3) thành các bộ ba $(a_i, c_i, s_i)$ -- đầu ra cuối
-cùng của hệ thống.
+\paragraph{Stage 4 — Tổng hợp.}
+Aspect term từ Stage 2 (hoặc gold) ghép với category và sentiment từ
+Stage 3 thành bộ ba $(a_i,c_i,s_i)$.
 
-\subsection{Hai kiến trúc tổ chức: Joint và Pipeline}
+\subsection{3.1.3. Joint vs Pipeline}
 \label{subsec:joint_pipeline}
-
-Khóa luận khảo sát hai cách kết nối Stage 2 và Stage 3
-(Bảng~\ref{tab:joint_pipeline}):
 
 \begin{table}[H]
 \centering
-\caption{Hai kiến trúc tổ chức bài toán đầu-cuối}
+\caption{Hai cách tổ chức bài toán đầu-cuối}
 \label{tab:joint_pipeline}
-\begin{tabular}{@{}p{2.0cm}p{6.5cm}p{4.5cm}@{}}
+\begin{tabular}{@{}p{2.2cm}p{5.8cm}p{4.8cm}@{}}
 \toprule
 \textbf{Kiến trúc} & \textbf{Mô tả} & \textbf{Đặc điểm} \\
 \midrule
-\textbf{Joint} & APC được đánh giá trên aspect term \emph{gold}; ATE và
-APC không phụ thuộc đầu ra của nhau & Cô lập được năng lực bộ phân loại,
-không chịu lan truyền lỗi \\
-\textbf{Pipeline} & T5 thực hiện ATE trước, aspect term \emph{dự đoán}
-được đưa sang APC & Linh hoạt, phản ánh hiệu suất thực tế; chịu lan
-truyền lỗi từ ATE \\
+\textbf{Joint} & APC đánh giá trên aspect term \emph{gold} & Cô lập năng lực classifier; không chịu lan truyền lỗi \\
+\textbf{Pipeline} & T5 chạy ATE trước, aspect term \emph{dự đoán} vào APC & Phản ánh hiệu suất đầu-cuối thực tế \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Chi tiết kiến trúc Stage APC}
-\label{subsec:apc_detail}
+\subsection{3.1.4. Kiến trúc chi tiết Stage APC}
+\label{subsec:apc_arch}
 
-Hình~\ref{fig:apc_detail} mô tả chi tiết stage phân loại. Đầu ra
-\texttt{last\_hidden\_state} $H \in \mathbb{R}^{L \times d_h}$ của
-backbone đi qua khối \textbf{Token Merging} (tùy chọn), sau đó tách thành
-\textbf{hai luồng}: luồng cục bộ (nhân với trọng số LCF) và luồng toàn
-cục (giữ nguyên). Hai luồng được hợp nhất, đưa qua self-attention và
-pooler, rồi vào hai đầu phân loại.
-
+% ── Hình 2: Chi tiết stage APC ──────────────────────────────────────
+% [CẦN HÌNH] fig_apc_detail.pdf (TikZ dưới đây hoặc script)
+% Script: scripts/generate_thesis_figures.py -> thêm hàm fig_apc_detail()
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  node distance=0.5cm and 0.9cm,
-  block/.style={rectangle, draw, rounded corners, align=center,
-                 minimum height=0.85cm, minimum width=3.4cm, font=\small},
-  optblock/.style={block, dashed, fill=black!4},
-  head/.style={block, minimum width=3.0cm},
-  arr/.style={-{Stealth[length=2.2mm]}, thick}
+  node distance=0.5cm and 0.8cm,
+  block/.style={rectangle, draw, rounded corners=4pt, align=center,
+                minimum height=0.9cm, minimum width=3.6cm, font=\small},
+  optblock/.style={block, dashed, fill=yellow!10},
+  head/.style={block, minimum width=3.2cm, fill=green!8},
+  arr/.style={-{Stealth[length=2.2mm]}, thick},
+  glb/.style={arr, dashed, blue!70}
 ]
-  \node[block] (input) {Input: \texttt{input\_ids},\\\texttt{attention\_mask}, \texttt{lcf\_vec}};
-  \node[block, below=of input] (bert) {Backbone (BERT)\\$H \in \mathbb{R}^{L\times d_h}$};
-  \node[optblock, below=of bert] (tome) {\textbf{Token Merging} (tùy chọn)\\$\to L' \to$ resize $\to L$};
-  \node[block, below=of tome] (lcf) {\textbf{LCF}: $H_{local}=H\odot c$\\(CDW mặc định / CDM)};
-  \node[block, below=of lcf] (sa1) {Self-Attention (\texttt{bert\_SA})};
-  \node[block, below=of sa1] (fusion) {Fusion: Concat$(H_{local}, H)$\\$\to$ Linear$(2d\!\to\!d)$};
-  \node[block, below=of fusion] (sa2) {Self-Attention (\texttt{bert\_SA\_})};
-  \node[block, below=of sa2] (pool) {Pooler (token \texttt{[CLS]})};
-  \node[head, below left=0.7cm and -1.4cm of pool] (h1) {Sentiment head\\Linear$(d\!\to\!3)$};
-  \node[head, below right=0.7cm and -1.4cm of pool] (h2) {Category head\\Linear$(d\!\to\!6)$};
+  \node[block] (inp)  {Input: \texttt{input\_ids,}\\
+                       \texttt{attention\_mask, lcf\_vec}};
+  \node[block, below=of inp]  (bert) {Backbone BERT/T5\\$H\in\mathbb{R}^{L\times d_h}$};
+  \node[optblock, below=of bert] (tome){%
+    \textbf{Token Merging} (\textit{tùy chọn})\\
+    bipartite / seq\_local / attn\_weighted\\
+    $L \to L' \xrightarrow{\text{resize}} L$};
+  \node[block, below=of tome]  (lcf)  {LCF: $H_{local}=H'\!\odot c$\\CDW (mặc định) / CDM};
+  \node[block, below=of lcf]   (sa1)  {Self-Attn \texttt{bert\_SA}};
+  \node[block, below=of sa1]   (fuse) {Fusion: Concat$(H_{local},H')$\\$\to$ Linear$(2d\!\to\!d)$};
+  \node[block, below=of fuse]  (sa2)  {Self-Attn \texttt{bert\_SA\_}};
+  \node[block, below=of sa2]   (pool) {Pooler — token \texttt{[CLS]}};
+  \node[head,  below left=0.8cm and -1.6cm of pool]  (hs) {Sentiment head\\Linear$(d\!\to\!3)$};
+  \node[head,  below right=0.8cm and -1.6cm of pool] (hc) {Category head\\Linear$(d\!\to\!6)$};
 
-  \draw[arr] (input) -- (bert);
-  \draw[arr] (bert) -- (tome);
-  \draw[arr] (tome) -- (lcf);
-  \draw[arr] (lcf) -- (sa1);
-  \draw[arr] (sa1) -- (fusion);
-  \draw[arr] (fusion) -- (sa2);
-  \draw[arr] (sa2) -- (pool);
-  \draw[arr] (pool) -- (h1);
-  \draw[arr] (pool) -- (h2);
-  % nhánh toàn cục đi vòng tới fusion
-  \draw[arr] (tome.east) -- ++(2.9,0) |- (fusion.east);
+  \draw[arr] (inp)--(bert); \draw[arr] (bert)--(tome);
+  \draw[arr] (tome)--(lcf); \draw[arr] (lcf)--(sa1);
+  \draw[arr] (sa1)--(fuse); \draw[arr] (fuse)--(sa2);
+  \draw[arr] (sa2)--(pool); \draw[arr] (pool)--(hs);
+  \draw[arr] (pool)--(hc);
+  % Luồng toàn cục đi vòng tới Fusion
+  \draw[glb] (tome.east) -- ++(3.2,0) node[right,font=\scriptsize,blue]{$H'$ (global)} |- (fuse.east);
 \end{tikzpicture}
-\caption{Chi tiết kiến trúc Stage APC (\texttt{FastLcfBertMultiTask}).
-Khối Token Merging (nét đứt) là tùy chọn; biểu diễn toàn cục đi vòng tới
-bước Fusion. Hai đầu phân loại chia sẻ chung phần thân.}
+\caption{Kiến trúc chi tiết Stage APC. Khối Token Merging (nét đứt) là
+tùy chọn, chèn giữa backbone và LCF. Biểu diễn toàn cục $H'$ đi vòng
+(mũi tên xanh nét đứt) tới Fusion, kết hợp với luồng cục bộ.}
 \label{fig:apc_detail}
 \end{figure}
 
+% ── Hình 3: So sánh ba chiến lược ToMe (sơ đồ minh họa) ────────────
+% [CẦN HÌNH] fig_tome_strategies.pdf
+% Script bên dưới (thêm vào scripts/generate_thesis_figures.py):
+%
+%   def fig_tome_strategies():
+%       fig, axes = plt.subplots(1, 3, figsize=(13, 3.5))
+%       titles = ['Bipartite', 'Sequential Local', 'Attention-Weighted']
+%       descs  = [
+%           'A: {1,3,6,8,10}\nB: {2,5,7,9,11}\nMỗi A chọn B cosine lớn nhất',
+%           'Quét L→R\nGập về hàng xóm giống nhất\nGiữ ranh giới LCF',
+%           'Xếp hạng theo attn↑\nGộp token ít quan trọng\nBảo vệ top-25% attn',
+%       ]
+%       for ax, t, d in zip(axes, titles, descs):
+%           ax.text(0.5, 0.55, t, ha='center', va='center',
+%                   fontsize=12, fontweight='bold', transform=ax.transAxes)
+%           ax.text(0.5, 0.25, d, ha='center', va='center',
+%                   fontsize=9, transform=ax.transAxes,
+%                   bbox=dict(boxstyle='round', fc='#f0f4ff', ec='#2E75B6', lw=1))
+%           ax.set_xlim(0,1); ax.set_ylim(0,1); ax.axis('off')
+%       fig.suptitle('Ba chiến lược gộp token trong ToMeSequenceMerger', y=1.02)
+%       fig.tight_layout()
+%       fig.savefig(FIG_DIR / 'fig_tome_strategies.pdf')
+%       fig.savefig(FIG_DIR / 'fig_tome_strategies.png')
+%       plt.close(fig)
+%       print('  -> fig_tome_strategies.pdf')
+
 % =====================================================================
-\section{Các phương pháp}
+\section{3.2. Các phương pháp}
 \label{sec:methods}
 
-Hai phương pháp kỹ thuật được tích hợp vào Stage APC nhằm hai mục tiêu
-bổ trợ nhau: \textbf{LCF} (mục~\ref{subsec:lcf}) tăng độ chính xác phân
-loại bằng cách tập trung vào ngữ cảnh quanh khía cạnh; \textbf{Token
-Merging} (mục~\ref{subsec:tome}) giảm chi phí tính toán bằng cách rút
-ngắn chuỗi token. Nền tảng lý thuyết của hai phương pháp đã trình bày ở
-Chương~\ref{chap:coso_lythuyet}; phần này tập trung vào cách \emph{áp
-dụng và hiện thực} chúng trong hệ thống.
+\subsection{3.2.1. Phương pháp 1: Local Context Focus (LCF)}
+\label{subsec:pp_lcf}
 
-\subsection{Phương pháp 1: Tập trung ngữ cảnh cục bộ (LCF)}
-\label{subsec:lcf}
+\paragraph{Xây dựng lcf\_vec (Stage 1).}
+Trong hàm \texttt{build\_lcf\_vec()} (\texttt{dataset\_utils.py}),
+hệ thống dùng \texttt{offset\_mapping} của tokenizer để xác định tập
+chỉ số $\mathcal{A}=\{i:[\ell_i,r_i]\cap[a_s,a_e]\neq\emptyset\}$
+(các sub-word token trong segment A giao với khoảng ký tự của cụm khía
+cạnh), rồi đặt $\texttt{lcf\_vec}[i]=1$ với $i\in\mathcal{A}$.
 
-\paragraph{Ý tưởng.} Với mỗi khía cạnh, các từ ở gần thường mang thông
-tin cảm xúc liên quan hơn các từ ở xa. LCF \cite{zeng2019lcf,
-yang2021lcfatepc} khai thác điều này bằng cách tạo thêm một luồng biểu
-diễn ``cục bộ'' trong đó token xa khía cạnh bị giảm trọng số, rồi kết
-hợp với luồng toàn cục.
-
-\paragraph{Khoảng cách ngữ nghĩa tương đối (SRD).} Từ vector
-\texttt{lcf\_vec} (dựng ở Stage 1), hệ thống xác định tâm và nửa độ rộng
-của cụm khía cạnh, rồi tính SRD của token tại vị trí $i$:
-
+\paragraph{Tính SRD.}
+Từ $\mathcal{A}$, xác định $a_{start}=\min\mathcal{A}$,
+$a_{end}=\max\mathcal{A}$. SRD tại vị trí $i$:
 \begin{equation}
-SRD_i = \max\!\Big(0,\; \big|\,i - \text{center}\,\big| - \text{half}\Big),
-\qquad
-\text{half} = \left\lfloor \frac{a_{end} - a_{start} + 1}{2} \right\rfloor
-\label{eq:srd_m}
+SRD_i = \max\!\Big(0,\,|i-\text{center}|-\text{half}\Big),\quad
+\text{center}=\frac{a_s+a_e}{2},\quad
+\text{half}=\left\lfloor\frac{a_e-a_s+1}{2}\right\rfloor
+\label{eq:srd_method}
 \end{equation}
+Token có $SRD_i\le\alpha=5$ thuộc ngữ cảnh cục bộ.
 
-với ngưỡng $\alpha = 5$ (\texttt{SRD\_THRESHOLD}): token có $SRD_i \le \alpha$
-thuộc ngữ cảnh cục bộ.
-
-\paragraph{Hai biến thể tạo trọng số.} Hệ thống cài đặt hai biến thể,
-chọn qua cờ \texttt{use\_cdm}:
-
+\paragraph{Hai biến thể trọng số.}
 \begin{itemize}
-  \item \textbf{CDW} (Context Dynamic Weight -- mặc định): trọng số giảm
-        dần liên tục, $c_i = 1$ nếu $SRD_i \le \alpha$, ngược lại
-        $c_i = \big(L - (SRD_i - \alpha)\big)/L$ (kẹp về $[0,1]$);
-  \item \textbf{CDM} (Context Dynamic Mask): mặt nạ nhị phân,
-        $m_i = 1$ nếu $SRD_i \le \alpha$, ngược lại $m_i = 0$.
+  \item \textbf{CDW} (mặc định, \texttt{use\_cdm=False}):
+    $c_i=1$ nếu $SRD_i\le\alpha$; ngược lại $c_i=(L-(SRD_i-\alpha))/L$,
+    kẹp $[0,1]$.
+  \item \textbf{CDM} (\texttt{use\_cdm=True}):
+    $m_i=\mathbf{1}[SRD_i\le\alpha]$.
 \end{itemize}
 
-\paragraph{Tích hợp hai luồng.} Luồng cục bộ $H_{local} = H \odot c$
-(hoặc $H \odot m$) qua self-attention \texttt{bert\_SA}; luồng toàn cục
-$H$ giữ nguyên. Hai luồng được hợp nhất:
+\paragraph{Tích hợp hai luồng.}
+\begin{align}
+H_{local} &= H \odot c \quad\text{(CDW) hoặc}\quad H \odot m \quad\text{(CDM)} \label{eq:lcf_local}\\
+H_{fused} &= \texttt{Linear}_{2d\to d}\big([H_{local}\,;\,H]\big) \label{eq:lcf_fuse}
+\end{align}
+$H_{fused}$ qua dropout, self-attention \texttt{bert\_SA\_}, pooler
+tại \texttt{[CLS]}, rồi vào hai đầu phân loại.
+
+\subsection{3.2.2. Phương pháp 2: Token Merging (ToMe)}
+\label{subsec:pp_tome}
+
+Module \texttt{ToMeSequenceMerger} được chèn \textbf{sau backbone,
+trước LCF}. Lý do vị trí này:
+\begin{enumerate}
+  \item Backbone đã tiền huấn luyện -- chèn vào giữa làm thay đổi phân
+        bố đầu vào các lớp sau;
+  \item Chèn trước LCF cho phép \texttt{lcf\_vec} được cập nhật đồng bộ
+        theo chuỗi đã gộp (qua quy tắc $\max$);
+  \item Cả hai nhánh Fusion làm việc trên cùng độ dài chuỗi, tránh không
+        đồng bộ.
+\end{enumerate}
+
+\subsubsection{3.2.2.1. Chiến lược 1 -- Bipartite}
+
+\begin{enumerate}
+  \item Xác định pool nội bộ: loại trừ \texttt{[CLS]}, \texttt{[SEP]}
+        và (khi \texttt{protect\_aspect=True}) token khía cạnh.
+  \item Gán pool xen kẽ vào hai nhánh $A=\{p_0,p_2,p_4,\ldots\}$,
+        $B=\{p_1,p_3,p_5,\ldots\}$ theo thứ hạng trong pool.
+  \item Chuẩn hóa $L_2$: $\hat{x}_i = x_i/\|x_i\|$.
+  \item Mỗi $a\in A$ chọn $b^*\in B$ có cosine lớn nhất (mỗi $b$ tối đa
+        một lần -- khử trùng theo thứ tự).
+  \item Hợp nhất: $x_a \leftarrow \tfrac12(x_a+x_{b^*})$;
+        $\texttt{lcf}[a]\leftarrow\max(\texttt{lcf}[a],\texttt{lcf}[b^*])$;
+        vị trí $b^*$ bị xóa.
+  \item Lặp \texttt{TOME\_MERGE\_STEPS=2} lần.
+\end{enumerate}
+
+\subsubsection{3.2.2.2. Chiến lược 2 -- Sequential Local}
+
+\begin{enumerate}
+  \item Phát hiện \textbf{ranh giới LCF (mid\_sep)}: vị trí $j$ là ranh
+        giới khi $\texttt{lcf}[j]<0.5$ và $\texttt{lcf}[j+1]>0.5$; các
+        vị trí này không bị xóa.
+  \item Quét trái$\to$phải qua các token còn hoạt động
+        (không thuộc CLS, SEP, mid\_sep, aspect).
+  \item Tại token $i$: tính $\text{sim}_{left}$, $\text{sim}_{right}$
+        với hàng xóm gần nhất trong vùng hợp lệ.
+  \item Nếu $\text{sim}_{left}>\text{sim}_{right}$: $i$ gập vào trái
+        ($x_{left}\leftarrow\tfrac12(x_{left}+x_i)$, xóa $i$); ngược lại
+        phải gập vào $i$ ($x_i\leftarrow\tfrac12(x_i+x_{right})$, xóa phải).
+  \item Một lượt quét = một bước gộp; có thể xảy ra \textbf{hiệu ứng cascade}
+        khiến nhiều token cùng gập về một điểm.
+\end{enumerate}
+
+\subsubsection{3.2.2.3. Chiến lược 3 -- Attention-Weighted}
+
+\begin{enumerate}
+  \item Xếp hạng token theo \texttt{attn\_seg} tăng dần.
+  \item Xác định tập bảo vệ: \texttt{[CLS]}, \texttt{[SEP]}, khía cạnh
+        ($\texttt{lcf}>0.5$), top 25\% attention.
+  \item Lặp đến khi gộp đủ $\lfloor(n-\texttt{prot\_l}-\texttt{prot\_r})/2\rfloor$ lần:
+    \begin{enumerate}
+      \item Chọn token $i$ có attention thấp nhất chưa bị loại và không được bảo vệ;
+      \item Tìm hàng xóm $j$ (không bị loại, không phải khía cạnh) có cosine cao nhất;
+      \item $x_j\leftarrow\tfrac12(x_j+x_i)$;
+            $\texttt{lcf}[j]\leftarrow\max(\texttt{lcf}[j],\texttt{lcf}[i])$;
+            đánh dấu $i$ đã bị loại.
+    \end{enumerate}
+\end{enumerate}
+
+\subsubsection{3.2.2.4. Chế độ resize}
+\label{subsubsec:why_resize}
+
+Sau khi gộp xuống $L'\le L$, chuỗi được nội suy tuyến tính trở lại $L$:
+\begin{equation}
+H_{\text{out}} = \texttt{F.interpolate}(H', \text{size}=L, \text{mode}=\texttt{"linear"})
+\end{equation}
+\texttt{lcf\_vec} cũng được nội suy nên vùng khía cạnh ``loang'' thành
+dải liên tục -- LCF phía sau vẫn hoạt động đúng.
+
+\noindent\textbf{Lý do chỉ dùng resize trong thực nghiệm chính:}
+\begin{enumerate}
+  \item \textbf{Cô lập biến cần đo}: giữ độ dài cố định $L=128$, khác
+        biệt duy nhất giữa các cấu hình là nội dung biểu diễn; mọi thay
+        đổi F1 quy hoàn toàn về thao tác gộp.
+  \item \textbf{Compact gây nhiễu}: mỗi câu sinh $L'$ khác nhau, trộn
+        lẫn ảnh hưởng của gộp với ảnh hưởng của độ dài.
+  \item \textbf{Compact ở vị trí này không tăng tốc đáng kể}: 12 lớp
+        backbone vẫn chạy ở $L=128$; chỉ hai lớp SA nhẹ phía sau được
+        hưởng lợi -- phần nhỏ trong tổng chi phí.
+\end{enumerate}
+
+\noindent Compact và pre-BERT ToMe là hướng phát triển tăng tốc thực sự
+(Chương~\ref{chap:ketluan}).
+
+\subsection{3.2.3. Huấn luyện đa nhiệm}
+\label{subsec:multitask_loss}
 
 \begin{equation}
-H_{fused} = \texttt{Linear}_{2d \rightarrow d}\big(\,[\,H_{local}\,;\,H\,]\,\big)
-\label{eq:fusion_m}
+\mathcal{L} = w_s\,\mathcal{L}_{\text{sent}}
+            + w_c\,\mathbbm{1}[\text{main\_mask}]\cdot\mathcal{L}_{\text{cat}}
+\label{eq:loss_method}
 \end{equation}
 
-trước khi qua self-attention thứ hai và pooler (xem
-Hình~\ref{fig:apc_detail}).
+\texttt{main\_mask}$=$ True khi \texttt{is\_supplement=False}. Trọng
+số lớp: $w_k = N/(C\cdot n_k)$. Mặc định $w_s=w_c=1.0$.
 
-\subsection{Phương pháp 2: Gộp token (Token Merging -- ToMe)}
-\label{subsec:tome}
+% =====================================================================
+\section{3.3. Bộ dữ liệu và thiết lập}
+\label{sec:training}
 
-\paragraph{Ý tưởng.} Chi phí self-attention tỉ lệ $O(n^2)$ theo độ dài
-chuỗi $n$; nhiều token (từ nối, dấu câu, subword lặp) mang ít thông tin
-phân biệt cảm xúc. ToMe \cite{bolya2023tome} gộp các token có biểu diễn
-tương tự nhau (đo bằng cosine) thành một token đại diện bằng phép trung
-bình, rút ngắn chuỗi mà không thêm tham số. Trong hệ thống, ToMe được áp
-dụng \textbf{sau backbone, trước LCF} (module
-\texttt{ToMeSequenceMerger}).
+\subsection{3.3.1. Định dạng và phân chia}
 
-\paragraph{Ba chiến lược gộp.} Lựa chọn qua tham số
-\texttt{merge\_strategy}:
+Định dạng \texttt{.apc}: mỗi mẫu gồm 4 dòng (câu với \texttt{\$T\$},
+aspect term, category, sentiment). Phân chia cố định:
+train 2\,448 / dev 304 / test 312.
+
+Không gian nhãn: 6 category $\times$ 3 sentiment $=$ 18 tổ hợp lý
+thuyết (thực tế 14 tổ hợp có mẫu trên tập train).
+
+\subsection{3.3.2. Siêu tham số}
 
 \begin{table}[H]
 \centering
-\caption{Ba chiến lược gộp token được khảo sát}
-\label{tab:tome_strategies}
-\begin{tabular}{@{}p{3.4cm}p{10.4cm}@{}}
+\caption{Siêu tham số module APC (\texttt{run\_joint\_experiments.py})}
+\label{tab:hparams}
+\begin{tabular}{@{}llll@{}}
 \toprule
-\textbf{Chiến lược} & \textbf{Cơ chế} \\
+\textbf{Tham số} & \textbf{Giá trị} & \textbf{Tham số} & \textbf{Giá trị} \\
 \midrule
-\texttt{bipartite} & Chia token nội bộ thành hai nhóm xen kẽ $A$, $B$;
-mỗi token $A$ ghép với token $B$ tương đồng cosine nhất (phương pháp gốc,
-CVPR 2023). \\
-\texttt{sequential\_local} & Quét trái$\to$phải, mỗi token gộp về phía
-hàng xóm (trái/phải) giống nhất; giữ nguyên ranh giới vào vùng khía cạnh. \\
-\texttt{attention\_weighted} & Ưu tiên gộp token có trọng số attention
-thấp nhất; bảo vệ token khía cạnh và token attention cao (top 25\%). \\
+Backbone     & BERT / T5 base & SRD $\alpha$ & 5 \\
+Epoch tối đa & 15 & ToMe steps & 2 \\
+Batch size   & 16 & Resize & True \\
+Learning rate & $2\times10^{-5}$ & Dropout & 0.1 \\
+Max seq len  & 128 & Seed & 42 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Bảo vệ token quan trọng.} Cả ba chiến lược đều bảo vệ tuyệt
-đối \texttt{[CLS]}, \texttt{[SEP]} và token thuộc vùng khía cạnh
-(\texttt{protect\_aspect=True}). Khi xảy ra gộp, chỉ thị khía cạnh được
-lan truyền qua phép lấy cực đại: $\text{lcf}[\text{src}] =
-\max(\text{lcf}[\text{src}], \text{lcf}[\text{dst}])$ -- nhờ đó LCF ở
-bước sau vẫn hoạt động đúng trên chuỗi đã rút gọn.
-
-\paragraph{Khôi phục độ dài (resize).} Sau khi gộp, chuỗi có độ dài
-$L' \le L$. Trong khóa luận, kết quả gộp \textbf{luôn được nội suy tuyến
-tính trở lại độ dài gốc $L$} (\texttt{resize=True}, dùng
-\texttt{F.interpolate} với \texttt{mode="linear"}) cho cả hidden states và
-\texttt{lcf\_vec}. Nhờ đó các lớp phía sau (LCF, self-attention, pooler)
-giữ nguyên kiến trúc và độ dài đầu vào không đổi qua mọi cấu hình.
-
-\subsubsection{Vì sao chỉ dùng resize mà không dùng compact}
-\label{subsubsec:why_resize}
-
-Module \texttt{ToMeSequenceMerger} có hỗ trợ chế độ \emph{compact}
-(\texttt{resize=False}) -- giữ nguyên chuỗi rút gọn độ dài $L'$ và đệm
-theo $L'_{\max}$ của batch. Tuy nhiên, \textbf{toàn bộ thực nghiệm của
-khóa luận chỉ dùng \texttt{resize=True}}, vì ba lý do sau:
-
-\begin{enumerate}
-  \item \textbf{Cô lập đúng biến cần đo.} Câu hỏi nghiên cứu đối với ToMe
-        là \emph{liệu việc gộp token dư thừa có làm suy giảm chất lượng
-        phân loại không, và chiến lược gộp nào bảo toàn thông tin tốt
-        nhất} -- một câu hỏi về \emph{chất lượng biểu diễn}. Chế độ resize
-        giữ độ dài chuỗi cố định ở $L = 128$ qua mọi cấu hình, nên khác
-        biệt duy nhất giữa baseline và một cấu hình có gộp là \emph{nội
-        dung} biểu diễn (do trung bình các token tương đồng). Mọi thay đổi
-        về độ chính xác vì thế quy hoàn toàn về thao tác gộp, không bị
-        nhiễu bởi độ dài chuỗi hay cách đệm khác nhau.
-  \item \textbf{Compact gây nhiễu so sánh.} Ở chế độ compact, mỗi cấu hình
-        (và mỗi câu) sinh ra độ dài $L'$ khác nhau, buộc phải đệm theo
-        $L'_{\max}$ của batch. Điều này trộn lẫn ảnh hưởng của \emph{việc
-        gộp} với ảnh hưởng của \emph{độ dài chuỗi thay đổi}, khiến không
-        thể quy kết sạch chênh lệch độ chính xác cho riêng chiến lược gộp.
-  \item \textbf{Lợi ích tốc độ của compact ở vị trí này là không đáng kể.}
-        ToMe được chèn \emph{sau} backbone (mục~\ref{subsec:tome}), nên 12
-        lớp Transformer của backbone -- phần tốn kém nhất -- vẫn luôn chạy
-        ở độ dài đầy đủ $L = 128$ bất kể chế độ nào. Compact chỉ rút ngắn
-        đầu vào cho hai lớp self-attention nhẹ phía sau, vốn chiếm tỉ lệ
-        nhỏ trong tổng chi phí. Do đó compact gần như không mang lại tăng
-        tốc thực sự, trong khi lại làm phức tạp việc so sánh.
-\end{enumerate}
-
-\noindent Vì những lý do trên, khóa luận giới hạn phạm vi thực nghiệm ở
-\textbf{câu hỏi chất lượng biểu diễn} (dùng resize). Câu hỏi \emph{tăng
-tốc suy luận} thực sự -- vốn đòi hỏi gộp token \emph{trước} backbone
-(pre-BERT ToMe, để chuỗi ngắn đi vào ngay 12 lớp Transformer) hoặc dùng
-compact ở vị trí thích hợp -- được để lại cho hướng phát triển
-(Chương~5).
-
-\subsection{Huấn luyện đa nhiệm}
-\label{subsec:multitask_loss}
-
-Hai đầu phân loại được huấn luyện đồng thời bằng tổng hai thành phần
-\texttt{CrossEntropyLoss}:
-
-\begin{equation}
-\mathcal{L} = w_{s}\,\mathcal{L}_{\text{sentiment}}
-            + w_{c}\,\mathbbm{1}[\text{main\_mask}]\cdot\mathcal{L}_{\text{aspect\_cat}}
-\label{eq:loss_m}
-\end{equation}
-
-trong đó $\mathbbm{1}[\text{main\_mask}]$ là hàm chỉ thị chỉ bật trên mẫu
-chính (\texttt{is\_supplement=False}) -- đầu phân loại nhóm khía cạnh
-\textbf{không} học trên mẫu bổ trợ (vốn không có nhãn category). Cấu hình
-chính dùng $w_s = w_c = 1.0$. Cả hai thành phần dùng \textbf{trọng số lớp
-theo tần suất nghịch đảo} $w_k = N/(C \cdot n_k)$ ($N$: tổng số mẫu, $C$:
-số lớp, $n_k$: số mẫu lớp $k$) để giảm ảnh hưởng của mất cân bằng dữ liệu.
-Giá trị siêu tham số và quy trình huấn luyện cụ thể được trình bày ở
-Chương~4.
-
-% =====================================================================
-\section{Ví dụ minh họa chi tiết các phương pháp}
-\label{sec:examples}
-
-Để làm rõ cơ chế của hai phương pháp, mục này trình bày một \textbf{ví dụ
-chạy xuyên suốt} với các vector ``đồ chơi'' (toy vectors) 4 chiều thay cho
-hidden states $768$ chiều thực tế. Các con số được chọn để minh họa, song
-mọi công thức và quy tắc đều đúng với mã nguồn.
-
-\subsection{Thiết lập chung}
-\label{subsec:ex_setup}
-
-Xét câu \textit{``I found the food delicious but service was terrible''}
-với khía cạnh \textbf{food} (gold: \textit{positive}, \texttt{FOOD}). Sau
-token hóa SPC, chuỗi gồm 13 token hợp lệ
-(\texttt{[CLS]} + câu + \texttt{[SEP]} + \texttt{food} + \texttt{[SEP]}),
-phần còn lại là padding. Bảng~\ref{tab:ex_tokens} liệt kê vị trí, token,
-vector ẩn $v_i$ và giá trị \texttt{lcf\_vec} (chỉ token khía cạnh ở
-segment A được gán 1).
+\subsection{3.3.3. Không gian 12 cấu hình}
 
 \begin{table}[H]
 \centering
-\caption{Thiết lập ví dụ: 13 token hợp lệ với vector ẩn 4 chiều}
+\caption{12 cấu hình thực nghiệm (tích LCF $\times$ ToMe $\times$ CDM/CDW)}
+\label{tab:configs}
+\small
+\begin{tabular}{@{}p{5.0cm}ccc@{}}
+\toprule
+\textbf{Tên cấu hình} & \textbf{LCF} & \textbf{ToMe} & \textbf{CDM/CDW} \\
+\midrule
+\texttt{baseline\_balanced}      & \xmark & \xmark & -- \\
+\texttt{lcf\_only\_cdw}          & \cmark & \xmark & CDW \\
+\texttt{lcf\_only\_cdm}          & \cmark & \xmark & CDM \\
+\texttt{bip\_resize}             & \xmark & bip    & -- \\
+\texttt{seq\_resize}             & \xmark & seq    & -- \\
+\texttt{attn\_resize}            & \xmark & attn   & -- \\
+\texttt{lcf\_bip\_cdw\_resize}   & \cmark & bip    & CDW \\
+\texttt{lcf\_bip\_cdm\_resize}   & \cmark & bip    & CDM \\
+\texttt{lcf\_seq\_cdw\_resize}   & \cmark & seq    & CDW \\
+\texttt{lcf\_seq\_cdm\_resize}   & \cmark & seq    & CDM \\
+\texttt{lcf\_attn\_cdw\_resize}  & \cmark & attn   & CDW \\
+\texttt{lcf\_attn\_cdm\_resize}  & \cmark & attn   & CDM \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{3.4. Ví dụ minh họa chi tiết}
+\label{sec:examples}
+
+Mục này minh họa cơ chế của từng phương pháp bằng \textbf{toy vector 4
+chiều} thay cho hidden states 768 chiều thực tế. Mọi công thức và quy
+tắc đều đúng với mã nguồn thực.
+
+\subsection{3.4.1. Thiết lập chung}
+\label{subsec:ex_setup}
+
+Câu: \textit{``I found the food delicious but service was terrible''};
+khía cạnh gold: \textbf{food} (Positive, \texttt{FOOD}). Sau token hóa
+SPC, chuỗi gồm 13 token hợp lệ.
+
+\begin{table}[H]
+\centering
+\caption{Thiết lập ví dụ: 13 token với vector ẩn 4 chiều}
 \label{tab:ex_tokens}
 \small
 \begin{tabular}{@{}clcc@{}}
 \toprule
 \textbf{Vị trí} & \textbf{Token} & \textbf{Vector $v_i$} & \texttt{lcf\_vec} \\
 \midrule
-0  & \texttt{[CLS]}      & $[1,0,1,0]$ & 0 \\
-1  & i                   & $[1,1,0,1]$ & 0 \\
-2  & found               & $[2,1,2,1]$ & 0 \\
-3  & the                 & $[1,0,1,1]$ & 0 \\
-4  & \textbf{food} (aspect) & $[5,4,3,2]$ & \textbf{1} \\
-5  & delicious           & $[4,3,2,2]$ & 0 \\
-6  & but                 & $[1,0,2,0]$ & 0 \\
-7  & service             & $[3,2,1,2]$ & 0 \\
-8  & was                 & $[1,1,2,0]$ & 0 \\
-9  & terrible            & $[3,1,0,3]$ & 0 \\
-10 & \texttt{[SEP]}$_{\text{mid}}$ & $[1,0,2,1]$ & 0 \\
-11 & food$_B$ (bản sao)  & $[5,4,3,2]$ & 0 \\
-12 & \texttt{[SEP]}$_{\text{end}}$ & $[0,1,0,1]$ & 0 \\
+0  & \texttt{[CLS]} & $[1,0,1,0]$ & 0 \\
+1  & i              & $[1,1,0,1]$ & 0 \\
+2  & found          & $[2,1,2,1]$ & 0 \\
+3  & the            & $[1,0,1,1]$ & 0 \\
+4  & \textbf{food}  & $[5,4,3,2]$ & \textbf{1} \\
+5  & delicious      & $[4,3,2,2]$ & 0 \\
+6  & but            & $[1,0,2,0]$ & 0 \\
+7  & service        & $[3,2,1,2]$ & 0 \\
+8  & was            & $[1,1,2,0]$ & 0 \\
+9  & terrible       & $[3,1,0,3]$ & 0 \\
+10 & \texttt{[SEP]}$_1$ & $[1,0,2,1]$ & 0 \\
+11 & food$_B$       & $[5,4,3,2]$ & 0 \\
+12 & \texttt{[SEP]}$_2$ & $[0,1,0,1]$ & 0 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Ví dụ Phương pháp 1a -- LCF-CDW}
+\subsection{3.4.2. Ví dụ PP1a -- LCF-CDW}
 \label{subsec:ex_cdw}
 
-Khía cạnh nằm tại $a_{start}=a_{end}=4$, nên
-$\text{center}=4$, $\text{half}=\lfloor 1/2 \rfloor = 0$, và
-$SRD_i = |i-4|$. Với $\alpha = 5$ và $L = 128$, trọng số CDW là 1 cho mọi
-token có $|i-4| \le 5$ (vị trí 0--9) và giảm nhẹ cho các vị trí xa hơn
-(Bảng~\ref{tab:ex_cdw}).
+$a_{start}=a_{end}=4$, nên center$=4$, half$=0$, $SRD_i=|i-4|$.
+Với $\alpha=5$, $L=128$: tất cả token vị trí 0--9 có $SRD\le5$ nên
+$c_i=1$; các vị trí 10--12:
 
 \begin{table}[H]
 \centering
-\caption{Trọng số CDW cho các vị trí có $SRD > \alpha$}
+\caption{Trọng số CDW tại các vị trí có $SRD>\alpha$}
 \label{tab:ex_cdw}
 \small
-\begin{tabular}{@{}cccl@{}}
+\begin{tabular}{@{}cccc@{}}
 \toprule
-\textbf{Vị trí} & $SRD_i$ & $c_i = \frac{L-(SRD_i-\alpha)}{L}$ & \textbf{Kết quả $v_i \cdot c_i$} \\
+Vị trí & $SRD_i$ & $c_i=(L-(SRD_i-\alpha))/L$ & $v_i\cdot c_i$ \\
 \midrule
-0--9 & $\le 5$ & $1.000$ & giữ nguyên \\
-10 & 6 & $127/128 = 0.992$ & $[0.99,\,0,\,1.98,\,0.99]$ \\
-11 & 7 & $126/128 = 0.984$ & $[4.92,\,3.94,\,2.95,\,1.97]$ \\
-12 & 8 & $125/128 = 0.977$ & $[0,\,0.98,\,0,\,0.98]$ \\
+10 & 6 & $127/128\approx0.992$ & $[0.99,0,1.98,0.99]$ \\
+11 & 7 & $126/128\approx0.984$ & $[4.92,3.94,2.95,1.97]$ \\
+12 & 8 & $125/128\approx0.977$ & $[0,0.98,0,0.98]$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent\textbf{Nhận xét:} vì $L=128$ lớn, CDW chỉ giảm trọng số rất nhẹ
-(còn $\approx 0.98$) ngay cả với token xa nhất -- token xa vẫn đóng góp,
-chỉ ít hơn. Với câu dài hơn (ví dụ 23 token, khía cạnh ở đầu câu), các
-token cuối có thể giảm xuống $\approx 0.89$: CDW \emph{giảm mượt} theo
-khoảng cách.
+\noindent\textbf{Nhận xét}: với $L=128$, CDW chỉ giảm rất nhẹ ($\approx0.98$)
+ngay cả token xa nhất -- gradient vẫn lan truyền mượt đến toàn chuỗi.
 
-\subsection{Ví dụ Phương pháp 1b -- LCF-CDM}
+\subsection{3.4.3. Ví dụ PP1b -- LCF-CDM}
 \label{subsec:ex_cdm}
 
-CDM dùng cùng SRD nhưng cắt cứng: $m_i = 1$ nếu $SRD_i \le 5$, ngược lại
-$m_i = 0$ (không phụ thuộc $L$). Trên ví dụ, các vị trí 10--12 bị
-\textbf{xóa hoàn toàn} (Bảng~\ref{tab:ex_cdm_vs_cdw}).
+CDM dùng cùng SRD nhưng cắt cứng: $m_i=1$ nếu $SRD_i\le5$, ngược lại
+$m_i=0$. Vị trí 10--12 bị \textbf{xóa hoàn toàn} ($v_i\cdot0=[0,0,0,0]$).
+CDM tốt hơn cho nhãn thiểu số vì tập trung ``cứng'' vào vùng khía cạnh;
+CDW giữ nhiều thông tin toàn cục hơn.
 
-\begin{table}[H]
-\centering
-\caption{So sánh CDW và CDM tại các vị trí 10--12}
-\label{tab:ex_cdm_vs_cdw}
-\small
-\begin{tabular}{@{}clll@{}}
-\toprule
-\textbf{Vị trí} & \textbf{Token} & \textbf{CDW} & \textbf{CDM} \\
-\midrule
-10 & \texttt{[SEP]}$_{\text{mid}}$ & $[0.99,0,1.98,0.99]$ & $[0,0,0,0]$ \\
-11 & food$_B$                       & $[4.92,3.94,2.95,1.97]$ & $[0,0,0,0]$ \\
-12 & \texttt{[SEP]}$_{\text{end}}$ & $[0,0.98,0,0.98]$ & $[0,0,0,0]$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\noindent\textbf{Nhận xét:} với câu ngắn, chênh lệch giữa CDM và CDW nhỏ
-(chỉ 3 token cuối). Với câu dài, CDM có thể cắt hơn 15 token -- luồng cục
-bộ chỉ còn đúng vùng câu quanh khía cạnh, bỏ hẳn \texttt{[SEP]} và bản sao
-segment B. Đây là lý do CDM thường tốt hơn cho nhãn thiểu số (tập trung
-``cứng''), còn CDW giữ nhiều thông tin toàn cục hơn.
-
-\subsection{Ví dụ Phương pháp 2a -- ToMe Bipartite}
+\subsection{3.4.4. Ví dụ PP2a -- ToMe Bipartite}
 \label{subsec:ex_bip}
 
-Token được bảo vệ: \texttt{[CLS]} (vị trí 0), \texttt{[SEP]}$_{\text{end}}$
-(vị trí 12) và token khía cạnh \textbf{food} (vị trí 4). Pool nội bộ còn
-lại gồm 10 vị trí $\{1,2,3,5,6,7,8,9,10,11\}$. Chia xen kẽ \emph{theo thứ
-hạng trong pool}\footnote{Theo \texttt{torch.arange(0,nm,2)} và
-\texttt{arange(1,nm,2)} trong \texttt{\_bipartite\_pairs} -- chia theo
-thứ hạng, không theo chẵn/lẻ của vị trí token.}:
+Token bảo vệ: vị trí 0 (CLS), 12 (SEP), 4 (food). Pool nội bộ:
+$\{1,2,3,5,6,7,8,9,10,11\}$, $nm=10$.
 
-\begin{equation*}
-A = \{1, 3, 6, 8, 10\}, \qquad B = \{2, 5, 7, 9, 11\}.
-\end{equation*}
+\noindent Chia xen kẽ (theo thứ hạng trong pool, không theo chẵn/lẻ vị trí):
+\[A=\{1,3,6,8,10\},\quad B=\{2,5,7,9,11\}.\]
 
-Mỗi token nhóm $A$ chọn token nhóm $B$ có cosine lớn nhất. Ví dụ với vị
-trí 1 (\textit{i}) và vị trí 7 (\textit{service}):
-
-\begin{equation*}
-\cos(v_1, v_7) = \frac{[1,1,0,1]\cdot[3,2,1,2]}{\sqrt{3}\,\sqrt{18}}
-= \frac{7}{7.35} \approx 0.95.
-\end{equation*}
-
-Bảng~\ref{tab:ex_bip} trình bày kết quả chọn cặp và khử trùng (mỗi token
-$B$ chỉ được ghép một lần, duyệt $A$ theo thứ tự).
+Ví dụ cosine giữa $v_1$=[1,1,0,1] và $v_7$=[3,2,1,2]:
+\[\cos(v_1,v_7)=\frac{1\cdot3+1\cdot2+0\cdot1+1\cdot2}{\sqrt{3}\cdot\sqrt{18}}=\frac{7}{7.35}\approx0.95.\]
 
 \begin{table}[H]
 \centering
-\caption{Bipartite -- chọn cặp và khử trùng (bước 1)}
+\caption{Bipartite -- chọn cặp và khử trùng}
 \label{tab:ex_bip}
 \small
 \begin{tabular}{@{}llcl@{}}
 \toprule
-\textbf{Token $A$} & \textbf{$B$ tương đồng nhất} & \textbf{cos} & \textbf{Kết quả} \\
+Token $A$ & $B$ tương đồng nhất & cos & Kết quả \\
 \midrule
-1 (i)        & 7 (service) & 0.95 & \cmark{} ghép $1\!\leftarrow\!7$ \\
-3 (the)      & 2 (found)   & 0.91 & \cmark{} ghép $3\!\leftarrow\!2$ \\
-6 (but)      & 2 (found)   & 0.85 & \xmark{} ($B{=}2$ đã dùng) \\
-8 (was)      & 2 (found)   & 0.90 & \xmark{} ($B{=}2$ đã dùng) \\
-10 (\texttt{[SEP]}) & 2 (found) & 0.90 & \xmark{} ($B{=}2$ đã dùng) \\
+1 (i)        & 7 (service) & 0.95 & \cmark ghép $1\leftarrow7$ \\
+3 (the)      & 2 (found)   & 0.91 & \cmark ghép $3\leftarrow2$ \\
+6 (but)      & 2 (found)   & 0.85 & \xmark ($B{=}2$ đã dùng) \\
+8 (was)      & 2 (found)   & 0.90 & \xmark ($B{=}2$ đã dùng) \\
+10 (\texttt{[SEP]}) & 2 (found) & 0.90 & \xmark ($B{=}2$ đã dùng) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Hai cặp được gộp bằng trung bình: vị trí 1 hấp thụ vị trí 7
-($x_1 \leftarrow \tfrac12(v_1+v_7)$), vị trí 3 hấp thụ vị trí 2; hai token
-2 và 7 bị loại $\Rightarrow$ chuỗi còn \textbf{11 token}. Vì
-\texttt{TOME\_MERGE\_STEPS = 2}, quá trình lặp lại trên 11 token và rút
-xuống \textbf{$\approx 9$ token}. Chỉ thị khía cạnh được lan truyền qua
-phép $\max$ (ở đây cả hai cặp đều có \texttt{lcf}$=0$ nên không đổi).
+Sau bước 1: xóa vị trí 7 và 2, chuỗi còn \textbf{11 token}. Bước 2
+lặp lại tương tự $\to$ $\approx$\textbf{9 token}.
 
-\subsection{Ví dụ Phương pháp 2b -- ToMe Sequential Local}
+\subsection{3.4.5. Ví dụ PP2b -- Sequential Local}
 \label{subsec:ex_seq}
 
-Chiến lược này quét trái$\to$phải, mỗi token gập về phía hàng xóm giống
-nhất. Trước hết, ranh giới vào vùng khía cạnh được phát hiện: tại vị trí
-3 có $\texttt{lcf}_3{=}0$ và $\texttt{lcf}_4{=}1$ nên vị trí 3
-(\textit{the}) được đánh dấu \texttt{mid\_sep} và \emph{không} bị gộp.
+Phát hiện ranh giới: tại $j=3$: $\texttt{lcf}_3=0$ và $\texttt{lcf}_4=1$
+$\Rightarrow$ vị trí 3 (\textit{the}) là \texttt{mid\_sep}, không bị gộp.
 
-Khi quét tới vị trí 5 (\textit{delicious}):
-
+Tại token 5 (\textit{delicious}):
 \begin{align*}
-\cos(v_5, v_4) &= \frac{[4,3,2,2]\cdot[5,4,3,2]}{\sqrt{33}\,\sqrt{54}} = \frac{42}{42.2} \approx 0.995 \quad (\text{trái}),\\
-\cos(v_5, v_6) &= \frac{[4,3,2,2]\cdot[1,0,2,0]}{\sqrt{33}\,\sqrt{5}} = \frac{8}{12.8} \approx 0.62 \quad (\text{phải}).
+\cos(v_5,v_4) &= \frac{[4,3,2,2]\cdot[5,4,3,2]}{\sqrt{33}\cdot\sqrt{54}}
+= \frac{42}{42.2}\approx0.995\quad\text{(trái)},\\
+\cos(v_5,v_6) &= \frac{[4,3,2,2]\cdot[1,0,2,0]}{\sqrt{33}\cdot\sqrt{5}}
+= \frac{8}{12.8}\approx0.625\quad\text{(phải)}.
 \end{align*}
 
-Vì sim trái lớn hơn, \textit{delicious} gập vào \textbf{food} (vị trí 4):
-$x_4 \leftarrow \tfrac12(v_4+v_5)$ và quan trọng là
-$\texttt{lcf}_4 = \max(1,0) = 1$ -- \textbf{tín hiệu khía cạnh được giữ
-nguyên}. Token khía cạnh không bị xóa nhưng \emph{có thể nhận} các token
-gộp vào. Do hiệu ứng \textbf{xếp tầng (cascade)} trong một lượt quét, các
-token kế tiếp (\textit{but}, \textit{service}, \textit{was},
-\textit{terrible}, \dots) lần lượt gập vào vị trí 4, khiến chuỗi rút mạnh
-xuống $\approx 5$ token chỉ sau \textbf{một lượt}. Sequential do đó gộp
-mạnh hơn bipartite (không bị giới hạn bởi số bước).
+Sim trái lớn hơn $\Rightarrow$ \textit{delicious} gập vào \textbf{food}
+(vị trí 4): $x_4\leftarrow\tfrac12(v_4+v_5)$;
+$\texttt{lcf}_4=\max(1,0)=1$ -- \textbf{tín hiệu khía cạnh giữ nguyên}.
+\textbf{Hiệu ứng cascade}: sau khi vị trí 4 cập nhật, các token kế tiếp
+(but, service, was, terrible, \ldots) lần lượt gập về vị trí 4, chuỗi
+rút xuống $\approx$5 token chỉ sau một lượt.
 
-\subsection{Ví dụ Phương pháp 2c -- ToMe Attention-Weighted}
+\subsection{3.4.6. Ví dụ PP2c -- Attention-Weighted}
 \label{subsec:ex_attn}
 
-Trong huấn luyện, vòng lặp không truyền trọng số attention nên
-\texttt{attn\_seg} đồng nhất ($=1$). Khi đó thuật toán chọn token
-\emph{chưa bị loại, không được bảo vệ, không phải khía cạnh} theo thứ tự,
-rồi gộp nó vào hàng xóm cosine cao nhất. Ví dụ ở vòng 1, vị trí 1
-(\textit{i}) được chọn; cosine cao nhất là với vị trí 7 (\textit{service},
-$\approx 0.95$) nên \textit{i} bị xóa và
-$x_7 \leftarrow \tfrac12(v_7+v_1)$ (xóa $i$, cập nhật $j$ bằng trung bình).
-Giới hạn $\lfloor(13-2)/2\rfloor = 5$ lần gộp, chuỗi rút xuống
-\textbf{8 token}; token khía cạnh \textbf{food} luôn được bảo vệ.
+Trong huấn luyện không có tín hiệu attention nên \texttt{attn\_seg}$=1$
+đồng nhất. Thuật toán chọn token đầu tiên chưa loại, không bảo vệ:
+vị trí 1 (\textit{i}). Cosine cao nhất với hàng xóm: vị trí 7
+(\textit{service}, $\approx0.95$) $\Rightarrow$ xóa vị trí 1, cập nhật
+$x_7\leftarrow\tfrac12(v_7+v_1)$. Giới hạn $\lfloor(13-2)/2\rfloor=5$
+lần gộp $\Rightarrow$ chuỗi còn \textbf{8 token}; food luôn bảo vệ.
 
-\subsection{Ví dụ tổ hợp: LCF-CDM + Bipartite + resize}
+\subsection{3.4.7. Ví dụ tổ hợp: CDM + Bipartite + Resize}
 \label{subsec:ex_combined}
 
-Cuối cùng, ghép các bước thành luồng đầy đủ của một cấu hình (ví dụ
-\texttt{use\_lcf=True}, \texttt{use\_cdm=True}, \texttt{use\_tome=True},
-\texttt{tome\_resize=True}, \texttt{merge\_strategy="bipartite"}):
+Cấu hình \texttt{lcf\_bip\_cdm\_resize} (\texttt{use\_lcf=True},
+\texttt{use\_cdm=True}, \texttt{use\_tome=True}, \texttt{resize=True},
+\texttt{merge\_strategy="bipartite"}):
 
 \begin{enumerate}
-  \item \textbf{Backbone} sinh $H \in \mathbb{R}^{128 \times d_h}$ (13
-        hàng hợp lệ, còn lại padding).
-  \item \textbf{ToMe bipartite} rút 13 $\to 9$ token, rồi
-        \textbf{resize} nội suy tuyến tính trở lại 128 hàng. Vector
-        \texttt{lcf\_vec} cũng được nội suy nên không còn nhị phân: vùng
-        khía cạnh ``loang'' thành một dải quanh vị trí tương ứng.
-  \item \textbf{CDM} tính lại từ \texttt{lcf\_vec} đã resize: tìm vùng
-        $\texttt{lcf} > 0.5$, suy ra center/half và mặt nạ; chỉ một cửa sổ
-        cục bộ quanh khía cạnh được giữ ($m_i = 1$), phần còn lại bằng 0.
-  \item \textbf{Luồng cục bộ} $H_{local} = H \odot m$; \textbf{luồng toàn
-        cục} giữ nguyên $H$.
-  \item \textbf{Fusion} $\to$ self-attention $\to$ pooler $\to$ hai đầu
-        phân loại, cho \texttt{sentiment\_logits} (3 lớp) và
-        \texttt{aspect\_cat\_logits} (6 lớp); $\arg\max$ cho
-        \textit{positive} và \texttt{FOOD}.
+  \item \textbf{Backbone} sinh $H\in\mathbb{R}^{128\times768}$ (13 hàng
+        hợp lệ, còn lại padding).
+  \item \textbf{ToMe bipartite}: 13 $\to$ 9 token sau 2 bước.
+        \textbf{Resize}: nội suy tuyến tính 9 $\to$ 128 hàng.
+        \texttt{lcf\_vec} cũng được nội suy $\Rightarrow$ vùng khía cạnh
+        ``loang'' thành dải giá trị liên tục quanh vị trí 4.
+  \item \textbf{CDM}: tìm vùng $\texttt{lcf}>0.5$, suy ra center/half;
+        tính mặt nạ nhị phân -- chỉ cửa sổ $[center-\alpha, center+\alpha]$
+        được giữ ($m_i=1$).
+  \item \textbf{Luồng cục bộ}: $H_{local}=H\odot m$.
+  \item \textbf{Fusion} $\to$ SA $\to$ pooler $\to$ hai đầu phân loại
+        $\to$ \textit{Positive}, \texttt{FOOD}.
 \end{enumerate}
 
-\noindent Hai điểm cần nhấn mạnh:
-
+\noindent Hai điểm then chốt:
 \begin{itemize}
-  \item \textbf{ToMe không tạo đặc trưng mới} -- nó chỉ \emph{giảm số
-        token} bằng cách trung bình các token tương đồng; đầu ra của ToMe
-        được dùng ngay cho LCF, không qua lớp biến đổi nào khác.
-  \item \textbf{Token \texttt{[CLS]} đưa vào pooler là từ biểu diễn đã
-        hợp nhất} ($H_{fused}$ sau Fusion + self-attention), \emph{không
-        phải} \texttt{[CLS]} thô của backbone -- tức quyết định phân loại
-        dựa trên cả luồng cục bộ lẫn toàn cục.
+  \item \textbf{ToMe không tạo đặc trưng mới} -- chỉ trung bình hóa các
+        token tương đồng; không có tham số học.
+  \item \textbf{Token \texttt{[CLS]} vào pooler} là từ $H_{fused}$ sau
+        Fusion + SA, không phải \texttt{[CLS]} thô của backbone -- quyết
+        định phân loại dựa trên cả hai luồng cục bộ và toàn cục.
 \end{itemize}
 
-% =====================================================================
 \section*{Tóm tắt chương}
 \addcontentsline{toc}{section}{Tóm tắt chương}
 
-Chương này đã trình bày phương pháp thực hiện theo hai trục chính: (1)
-\textbf{kiến trúc tổng thể} gồm bốn stage nối tiếp -- tiền xử lý, ATE
-(T5), APC (\texttt{FastLcfBertMultiTask}) và tổng hợp bộ ba -- cùng chi
-tiết kiến trúc stage phân loại và hai cách tổ chức Joint/Pipeline; (2)
-\textbf{hai phương pháp kỹ thuật} tích hợp vào stage APC: LCF (với SRD và
-hai biến thể CDM/CDW) nhằm tập trung ngữ cảnh cục bộ, và Token Merging
-(ba chiến lược) nhằm giảm dư thừa token. Chương cũng làm rõ \textbf{lý do
-toàn bộ thực nghiệm chỉ dùng chế độ \texttt{resize}} (cô lập câu hỏi chất
-lượng biểu diễn) và hàm mất mát đa nhiệm có trọng số lớp. Bộ dữ liệu, thiết
-lập huấn luyện, không gian cấu hình và kết quả thực nghiệm được trình bày
-ở Chương~4.
+Chương 3 trình bày: (1) kiến trúc bốn stage của hệ thống Joint Triplet
+Extraction với hai chế độ Joint/Pipeline; (2) chi tiết stage APC --
+LCF (CDW/CDM, SRD, Fusion) và Token Merging (ba chiến lược, chế độ
+resize/compact/pre-BERT, lý do chỉ dùng resize); (3) bộ dữ liệu, siêu
+tham số và 12 cấu hình thực nghiệm; (4) năm ví dụ minh họa tường minh
+với toy vectors. Kết quả thực nghiệm được trình bày ở Chương~\ref{chap:ketqua}.

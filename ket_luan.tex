@@ -1,4 +1,4 @@
-% =====================================================================
+﻿% =====================================================================
 %  Chương V — KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN
 %  File này được thiết kế để \input vào file luận văn chính.
 %  Không yêu cầu gói đặc biệt ngoài các gói đã dùng ở các chương trước.
@@ -7,7 +7,7 @@
 \label{chap:ketluan}
 
 % =====================================================================
-\section{Kết luận}
+\section{5.1. Kết luận}
 \label{sec:kl_ketluan}
 
 Khóa luận đã xây dựng và đánh giá một hệ thống trích xuất bộ ba
@@ -35,7 +35,7 @@ phương pháp kỹ thuật trọng tâm là \textbf{Local Context Focus (LCF)} 
         loại token dư thừa không phá hỏng biểu diễn cần cho phân loại.
 \end{enumerate}
 
-\subsection{Về quyết định chỉ dùng chế độ resize}
+\subsection{5.1.1. Về quyết định chỉ dùng chế độ resize}
 \label{subsec:kl_resize}
 
 Toàn bộ thực nghiệm sử dụng chế độ \texttt{resize} (nội suy chuỗi đã gộp
@@ -52,7 +52,7 @@ chi phí gộp và nội suy. Việc hiện thực hóa lợi ích tốc độ c
 Merging là nội dung của hướng phát triển dưới đây.
 
 % =====================================================================
-\section{Hạn chế}
+\section{5.2. Hạn chế}
 \label{sec:kl_hanche}
 
 \begin{itemize}
@@ -71,10 +71,10 @@ Merging là nội dung của hướng phát triển dưới đây.
 \end{itemize}
 
 % =====================================================================
-\section{Hướng phát triển}
+\section{5.3. Hướng phát triển}
 \label{sec:kl_huongphattrien}
 
-\subsection{Hiện thực hóa tăng tốc của Token Merging}
+\subsection{5.3.1. Hiện thực hóa tăng tốc của Token Merging}
 
 Đây là hướng quan trọng nhất, nối tiếp trực tiếp phân tích ở
 mục~\ref{subsec:kl_resize}:
@@ -93,20 +93,20 @@ mục~\ref{subsec:kl_resize}:
         của từng chiến lược gộp.
 \end{itemize}
 
-\subsection{Cải thiện bước ATE}
+\subsection{5.3.2. Cải thiện bước ATE}
 
 Vì ATE là nút thắt, có thể: tinh chỉnh T5 với ràng buộc biên chặt hơn,
 dùng decoding có ràng buộc (constrained decoding) để đầu ra luôn là chuỗi
 con hợp lệ, hoặc thử kiến trúc trích xuất theo span thay cho sinh tự do.
 
-\subsection{Xử lý mất cân bằng và mở rộng dữ liệu}
+\subsection{5.3.3. Xử lý mất cân bằng và mở rộng dữ liệu}
 
 Bổ sung dữ liệu cho các nhãn hiếm, thử các kỹ thuật như focal loss,
 over-sampling có kiểm soát, hoặc sinh dữ liệu tăng cường; đồng thời mở
 rộng đánh giá sang miền khác (nhà hàng, thương mại điện tử) để kiểm chứng
 khả năng khái quát.
 
-\subsection{Khảo sát sâu hơn về LCF và chiến lược gộp}
+\subsection{5.3.4. Khảo sát sâu hơn về LCF và chiến lược gộp}
 
 Quét siêu tham số ngưỡng SRD $\alpha$ và số bước gộp; kết hợp tín hiệu
 attention thực (thay vì trọng số đồng nhất) cho chiến lược
