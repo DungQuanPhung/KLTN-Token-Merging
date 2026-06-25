@@ -152,16 +152,16 @@ CONFIGS: List[Tuple] = [
     #   12.  lcf_pre_attn         — pre-BERT Attn (no post-BERT merge)
     #
     # Baseline
-    # (False, False, False, False, "bipartite",          False, "Baseline (Balanced)",    "baseline_balanced"),
+    (False, False, False, False, "bipartite",          False, "Baseline (Balanced)",    "baseline_balanced"),
     # ── LCF only (no ToMe) ────────────────────────────────────────────────────
     # (True,  True,  False, False, "bipartite",          False, "LCF only CDM",           "lcf_only_cdm"),
-    # (True,  False, False, False, "bipartite",          False, "LCF only CDW",           "lcf_only_cdw"),
+    (True,  False, False, False, "bipartite",          False, "LCF only CDW",           "lcf_only_cdw"),
     # ── Post-BERT ToMe (compact = no sequence resize after merge) ─────────────
     # (True,  True,  True,  False, "bipartite",          False, "LCF+Bip CDM (compact)",  "lcf_bip_cdm_compact"),
     # (True,  False, True,  False, "bipartite",          False, "LCF+Bip CDW (compact)",  "lcf_bip_cdw_compact"),
-    # (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq CDM (compact)",  "lcf_seq_cdm_compact"),
-    # (True,  False, True,  False, "sequential_local",   False, "LCF+Seq CDW (compact)",  "lcf_seq_cdw_compact"),
-    # (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn CDM (compact)", "lcf_attn_cdm_compact"),
+    (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq CDM (compact)",  "lcf_seq_cdm_compact"),
+    (True,  False, True,  False, "sequential_local",   False, "LCF+Seq CDW (compact)",  "lcf_seq_cdw_compact"),
+    (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn CDM (compact)", "lcf_attn_cdm_compact"),
     # (True,  False, True,  False, "attention_weighted", False, "LCF+Attn CDW (compact)", "lcf_attn_cdw_compact"),
     # ── Pre-BERT ToMe (merge at embedding level BEFORE BERT encoder) ──────────
     # use_tome=False → no post-BERT merge; tome_resize unused when use_tome=False
