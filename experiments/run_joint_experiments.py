@@ -118,7 +118,7 @@ CLAUSE_SPLIT_MODE = "none"
 
 # Set True to mix supplement TSV data into sentiment-head training (recommended).
 # Set False to train on main .apc data only.
-USE_SUPPLEMENT = False
+USE_SUPPLEMENT = True
 
 # Default loss and early stopping weights
 DEFAULT_TASK_WEIGHT_SENT = 1.0  # 1.317
@@ -155,9 +155,9 @@ CONFIGS: List[Tuple] = [
     (False, False, False, False, "bipartite",          False, "Baseline (Balanced)",    "baseline_balanced"),
     # ── LCF only (no ToMe) ────────────────────────────────────────────────────
     # (True,  True,  False, False, "bipartite",          False, "LCF only CDM",           "lcf_only_cdm"),
-    (True,  False, False, False, "bipartite",          False, "LCF only CDW",           "lcf_only_cdw"),
+    # (True,  False, False, False, "bipartite",          False, "LCF only CDW",           "lcf_only_cdw"),
     # ── Post-BERT ToMe (compact = no sequence resize after merge) ─────────────
-    # (True,  True,  True,  False, "bipartite",          False, "LCF+Bip CDM (compact)",  "lcf_bip_cdm_compact"),
+    (True,  True,  True,  False, "bipartite",          False, "LCF+Bip CDM (compact)",  "lcf_bip_cdm_compact"),
     # (True,  False, True,  False, "bipartite",          False, "LCF+Bip CDW (compact)",  "lcf_bip_cdw_compact"),
     (True,  True,  True,  False, "sequential_local",   False, "LCF+Seq CDM (compact)",  "lcf_seq_cdm_compact"),
     (True,  False, True,  False, "sequential_local",   False, "LCF+Seq CDW (compact)",  "lcf_seq_cdw_compact"),
