@@ -550,18 +550,6 @@ class ToMeSequenceMerger(nn.Module):
             prot_l = 1 if self.protect_cls else 0
             prot_r = 1 if self.protect_sep else 0
 
-            # Pre-compute per-token attention scores once; updated via keep_mask after each step
-            if self.merge_strategy == "attention_weighted":
-                attn_seg = torch.ones(x_seg.size(0), device=device, dtype=dtype)
-                if attention_weights is not None and attention_weights.size(0) > b:
-                    attn_full = attention_weights[b].float()
-                    if attn_full.numel() > 0:
-                        valid_attn = attn_full[valid_idx]
-                        if valid_attn.numel() == x_seg.size(0):
-                            attn_seg = valid_attn.clone()
-            else:
-                attn_seg = None
-
             for step in range(self.num_merge_steps):
                 before = x_seg.size(0)
                 x_before   = x_seg.clone()
@@ -615,6 +603,12 @@ class ToMeSequenceMerger(nn.Module):
 
                 else:  # attention_weighted
                     # ── Attention-weighted merge ─────────────────────────────
+                    attn_seg = torch.ones(x_seg.size(0), device=device, dtype=dtype)
+                    if attention_weights is not None and attention_weights.size(0) > b:
+                        attn_full = attention_weights[b].float()
+                        if attn_full.numel() > 0:
+                            attn_seg = attn_full[valid_idx].clone()
+
                     x_seg, lf_seg, keep_mask, raw_pairs = _attention_weighted_merge(
                         x_seg, lf_seg, attn_seg, prot_l, prot_r,
                         self.protect_aspect,
@@ -629,7 +623,6 @@ class ToMeSequenceMerger(nn.Module):
                             }
                         )
                         break
-                    attn_seg = attn_seg[keep_mask]  # update scores for next step
                     pairs_list = raw_pairs        # list of (removed, kept) tuples
                     pair_meta_log = {
                         "status": "ok",
