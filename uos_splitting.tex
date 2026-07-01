@@ -1,0 +1,173 @@
+% =====================================================================
+%  Tiền xử lý: Tách câu thành Unit Opinion Sentence bằng LLM
+%  — \input{} vào ngay trước \subsection{Kết quả đánh giá với tách câu}
+% =====================================================================
+
+\subsection{Phương pháp tách câu bằng mô hình ngôn ngữ lớn (UOS)}
+\label{subsec:uos_method}
+
+\subsubsection*{Động lực}
+
+Một câu đánh giá khách sạn thường đề cập đến nhiều khía cạnh cùng
+lúc trong một mệnh đề duy nhất, ví dụ:
+
+\begin{quote}
+\textit{``Overall, the quality of the restaurant, service, rooms as well as
+the staff all bring a great feeling, well worth the experience.''}
+\end{quote}
+
+Câu trên chứa bốn khía cạnh độc lập: \textit{restaurant},
+\textit{service}, \textit{rooms}, \textit{staff}. Khi đưa nguyên câu
+vào mô hình ABSA, biểu diễn ngữ nghĩa của một khía cạnh bị pha trộn
+bởi các khía cạnh còn lại, dẫn đến hiện tượng bỏ sót dự đoán
+(\textit{under-prediction}).
+
+Để khắc phục, bước tiền xử lý tách mỗi câu gốc thành các
+\textbf{Unit Opinion Sentence (UOS)} — những câu hoàn chỉnh, tự thân,
+mỗi câu chỉ chứa đúng một ý kiến về đúng một khía cạnh.
+
+\subsubsection*{Kiến trúc pipeline}
+
+Pipeline tách UOS giao tiếp với mô hình ngôn ngữ thông qua
+\textbf{Ollama API} (endpoint \texttt{/api/chat}) chạy cục bộ với mô
+hình \textbf{Qwen3-8B}. Luồng xử lý từng câu gồm bốn bước:
+
+\begin{enumerate}
+  \item \textbf{Xây dựng prompt} (\texttt{prompt.py}) — Nhúng câu đầu
+        vào vào prompt cố định \textit{linguistic\_v11} chứa định nghĩa
+        aspect term, quy tắc tách và 14 ví dụ few-shot.
+  \item \textbf{Gọi LLM} — Gửi prompt tới Qwen3-8B qua Ollama;
+        tham số \texttt{think=False} tắt chuỗi suy luận nội bộ để giảm
+        độ trễ.
+  \item \textbf{Phân tích đầu ra} (\texttt{parsing.py}) — Trích xuất
+        mảng JSON từ văn bản thô, loại bỏ code-fence (\texttt{```}) và
+        thẻ \texttt{<think>}, chuẩn hóa dấu câu cuối mỗi UOS.
+  \item \textbf{Kiểm tra hợp lệ} (\texttt{validation.py}) — Phát hiện
+        tách quá mức (\textit{over-split}), cặp tương phản chưa tách,
+        hoặc token không xuất hiện trong câu gốc.
+\end{enumerate}
+
+\subsubsection*{Thiết kế prompt}
+
+Prompt \textit{linguistic\_v11} được thiết kế theo hướng quy tắc ngôn
+ngữ, không phân loại aspect hay sentiment trực tiếp.
+Bảng~\ref{tab:uos_rules} tóm tắt các quy tắc tách/không tách chính.
+
+\begin{table}[H]
+\centering
+\caption{Quy tắc tách câu trong prompt \textit{linguistic\_v11}}
+\label{tab:uos_rules}
+\small
+\begin{tabular}{p{0.46\linewidth} p{0.46\linewidth}}
+\toprule
+\textbf{TÁCH} & \textbf{KHÔNG TÁCH} \\
+\midrule
+Nhiều aspect term, mỗi cái mang ý kiến riêng &
+Nhiều tính từ bổ nghĩa cho cùng một aspect term \\[4pt]
+Danh sách aspect nối bằng dấu phẩy hoặc ``and'' (có thể tách độc lập) &
+Cặp danh từ ghép chặt thành một khái niệm
+(vd.\ \textit{staff and customer service}) \\[4pt]
+Tính từ dùng chung phân phối lại cho từng aspect &
+Câu logistic/bối cảnh kèm một ý kiến duy nhất \\[4pt]
+Hai ý kiến tương phản trên một aspect &
+Phát biểu sự kiện không mang cảm xúc \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ngoài ra mỗi UOS phải tuân thủ: (i)~chỉ dùng từ ngữ có trong câu gốc
+— không diễn giải, không thay thế; (ii)~thêm ``The''/``A'' làm chủ
+ngữ nếu thiếu; (iii)~thêm copula (``is'', ``was'') nếu câu bị phân
+mảnh.
+
+\subsubsection*{Thống kê tách câu trên tập kiểm tra}
+
+Bảng~\ref{tab:uos_stats} và Bảng~\ref{tab:uos_dist} tổng hợp kết quả
+tách UOS trên toàn bộ 312 câu của tập kiểm tra.
+
+\begin{table}[H]
+\centering
+\caption{Tổng quan tách UOS trên tập kiểm tra}
+\label{tab:uos_stats}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Chỉ số} & \textbf{Giá trị} \\
+\midrule
+Tổng câu đầu vào               & 312 \\
+Tổng UOS đầu ra                & 612 \\
+Số UOS trung bình / câu        & 1{,}96 \\
+Câu được tách (số UOS $> 1$)  & 174 (55{,}8\%) \\
+Câu giữ nguyên (số UOS $= 1$) & 138 (44{,}2\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Phân phối số UOS đầu ra trên 312 câu đầu vào}
+\label{tab:uos_dist}
+\begin{tabular}{@{}crr@{}}
+\toprule
+\textbf{Số UOS} & \textbf{Số câu} & \textbf{Tỉ lệ (\%)} \\
+\midrule
+1 & 138 & 44{,}2 \\
+2 &  95 & 30{,}4 \\
+3 &  47 & 15{,}1 \\
+4 &  22 &  7{,}1 \\
+5 &   6 &  1{,}9 \\
+6 &   3 &  1{,}0 \\
+7 &   1 &  0{,}3 \\
+\midrule
+\textbf{Tổng} & \textbf{312} & \textbf{100{,}0} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Kết quả cho thấy gần 56\% câu đầu vào chứa từ hai khía cạnh trở lên
+và được tách thành nhiều UOS. Phổ biến nhất là tách thành 2 UOS
+(30,4\%), phản ánh đặc thù dữ liệu đánh giá khách sạn: người dùng
+thường đề cập đồng thời nhiều khía cạnh trong một câu ngắn.
+
+Bảng~\ref{tab:uos_examples} minh họa các trường hợp tách tiêu biểu.
+
+\begin{table}[H]
+\centering
+\caption{Ví dụ tách câu gốc thành UOS (trích từ tập kiểm tra)}
+\label{tab:uos_examples}
+\small
+\begin{tabular}{p{0.07\linewidth} p{0.40\linewidth} p{0.43\linewidth}}
+\toprule
+\textbf{} & \textbf{Câu gốc} & \textbf{Các UOS đầu ra} \\
+\midrule
+$1{\to}1$ &
+\textit{they upgraded us to a beautiful suite without us even asking} &
+(1)~They upgraded us to a beautiful suite without us even asking. \\[6pt]
+
+$1{\to}2$ &
+\textit{The service staff is very attentive and conscientious} &
+(1)~The service staff is very attentive. \newline
+(2)~The service staff is very conscientious. \\[6pt]
+
+$1{\to}3$ &
+\textit{xe takes you to your door, enthusiastic driver, cute cheese sticks} &
+(1)~Xe takes you to your door. \newline
+(2)~The driver is enthusiastic. \newline
+(3)~The cheese sticks are cute. \\[6pt]
+
+$1{\to}4$ &
+\textit{Overall, the quality of the restaurant, service, rooms as well as the staff all bring a great feeling, well worth the experience.} &
+(1)~The restaurant is great. \newline
+(2)~The service is great. \newline
+(3)~The rooms are great. \newline
+(4)~The staff is great. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Trường hợp $1{\to}4$ minh họa khả năng mô hình xác định các aspect
+term ẩn, phân phối lại vị từ chung ``is great'' cho từng UOS, đồng
+thời bỏ qua phần bình luận tổng quan (``overall'', ``well worth the
+experience'') vì không gắn với một khía cạnh cụ thể.
+Sau bước tách UOS, mỗi UOS là một mẫu độc lập trong pipeline ABSA,
+đảm bảo mỗi câu đầu vào chỉ chứa đúng một cặp (aspect term, sentiment)
+và giảm hiện tượng bỏ sót dự đoán ở giai đoạn phân loại.

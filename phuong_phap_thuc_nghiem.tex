@@ -488,59 +488,59 @@ Bảng~\ref{tab:bert_results} Tổng hợp kết quả trên tập test với ba
 \midrule
 
 Base (BERT)
-& \textbf{257.18}
-& 86.54
-& 63.75 \\
+& $283.52 \pm 12.92$
+& $86.01 \pm 1.21$
+& $62.52 \pm 1.27$ \\
 
 CDM
-& 311.07
-& 84.62
-& 57.96 \\
+& $306.50 \pm 67.90$
+& $85.26 \pm 0.85$
+& $62.21 \pm 3.68$ \\
 
 CDW
-& 265.07
-& 85.90
-& 61.01 \\
+& $\mathbf{247.37 \pm 59.50}$
+& $85.47 \pm 1.03$
+& $62.18 \pm 2.48$ \\
 
 BipTome
-& 373.99
-& \textbf{86.86}
-& 64.03 \\
+& $379.42 \pm 23.24$
+& $86.01 \pm 0.18$
+& $63.83 \pm 1.27$ \\
 
 SLM
-& 651.13
-& 86.22
-& 62.95 \\
+& $633.20 \pm 58.17$
+& $86.01 \pm 1.21$
+& $66.62 \pm 4.08$ \\
 
 AWM
-& 683.98
-& 85.26
-& 62.31 \\
+& $627.57 \pm 210.39$
+& $\mathbf{86.86 \pm 1.95}$
+& $\mathbf{66.75 \pm 2.71}$ \\
 
 BiTome + CDM
-& 382.59
-& 84.94
-& 68.73 \\
+& $416.19 \pm 60.52$
+& $85.15 \pm 0.18$
+& $64.51 \pm 3.64$ \\
 
 BiTome + CDW
-& 462.86
-& \textbf{86.86}
-& 64.62 \\
+& $444.43 \pm 161.29$
+& $86.22 \pm 0.85$
+& $61.04 \pm 1.66$ \\
 
 SLM + CDM
-& 553.26
-& \textbf{86.86}
-& 64.28 \\
+& $548.60 \pm 122.79$
+& $85.47 \pm 1.03$
+& $62.76 \pm 1.32$ \\
 
 SLM + CDW
-& 607.67
-& \textbf{86.86}
-& 64.62 \\
+& $608.14 \pm 69.11$
+& $86.43 \pm 0.81$
+& $64.12 \pm 0.86$ \\
 
 AWM + CDM
-& 586.42
-& 86.54
-& \textbf{71.98} \\
+& $585.88 \pm 236.93$
+& $84.83 \pm 0.67$
+& $62.96 \pm 1.87$ \\
 
 AWM + CDW
 & 533.40
@@ -624,19 +624,19 @@ Việc lựa chọn các cấu hình trên giúp giảm số lượng thí nghi�
 \midrule
 
 GAS + Base
-& 79.87 & 70.53 & 48.80 & 86.54 \\
+& 79.87 & $69.21 \pm 0.87$ & $50.18 \pm 1.74$ & $86.01 \pm 1.21$ \\
 
 GAS + BiTome
-& 79.87 & 69.24 & 54.20 & 84.94 \\
+& 79.87 & $69.74 \pm 1.13$ & $\mathbf{51.94 \pm 2.29}$ & $86.01 \pm 0.18$ \\
 
 GAS + SLM + CDM
-& 79.87 & \textbf{71.18} & 50.00 & \textbf{86.86} \\
+& 79.87 & $69.21 \pm 1.74$ & $50.56 \pm 2.91$ & $85.47 \pm 1.03$ \\
 
 GAS + SLM + CDW
-& 79.87 & 70.21 & 50.00 & \textbf{86.86} \\
+& 79.87 & $\mathbf{69.85 \pm 1.74}$ & $51.63 \pm 2.60$ & $\mathbf{86.43 \pm 0.81}$ \\
 
 GAS + AWM + CDM
-& 79.87 & 69.89 & \textbf{57.16} & 86.54 \\
+& 79.87 & $68.15 \pm 0.46$ & $50.43 \pm 1.42$ & $84.83 \pm 0.67$ \\
 
 \bottomrule
 \end{tabular}
@@ -815,6 +815,8 @@ hai tiêu chí: chất lượng dự đoán và chi phí tính toán.
 
 
 % =====================================================================
+\input{uos_splitting}
+
 \subsection{Kết quả đánh giá với tách câu (clause splitting)}
 \label{subsec:clause_split}
 
@@ -868,10 +870,10 @@ Nhìn chung, kết quả thực nghiệm khẳng định rằng tách câu bằn
 \midrule
 \texttt{GAS} & 69.51  & 68.54 &70.51\\
 \texttt{TOFA} & 62.65 & 62.65 & 62.65 \\
-\texttt{Base (BERT)} & 70.53 &70.87 &70.19 \\
+\texttt{Base (BERT)} & 69.21 & 68.67 & 69.76 \\
 \texttt{BipTome + CDM Resize(T5)} & \textbf{71.18} &\textbf{71.52} & \textbf{70.83}\\
-\texttt{SLM + CDM Resize(BERT)} &  \textbf{71.18} & \textbf{71.52} & \textbf{70.83} \\
-\texttt{SLM + CDW Resize(BERT)} & 70.21 & 70.55 & 69.87 \\
+\texttt{SLM + CDM Resize(BERT)} & 69.21 & 68.67 & 69.76 \\
+\texttt{SLM + CDW Resize(BERT)} & 69.85 & 69.30 & 70.40 \\
 \bottomrule
 \end{tabular}
 \end{table}

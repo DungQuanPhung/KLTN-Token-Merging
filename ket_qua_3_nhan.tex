@@ -1,0 +1,207 @@
+\section{Kết quả theo Sentiment và Category}
+\label{sec:e2e_3label}
+
+Phần này trình bày kết quả đánh giá trên \textbf{task 3 nhãn}:
+mô hình phải dự đoán đồng thời ba thành phần
+$(\textit{aspect term},\; \textit{category},\; \textit{sentiment})$
+cho mỗi câu đánh giá. Một bộ ba $(\hat{a}, \hat{c}, \hat{s})$ được tính
+là đúng (True Positive) \emph{khi và chỉ khi} cả ba thành phần đều khớp
+với nhãn gold.
+
+% ============================================================
+\subsection{F1 theo lớp cảm xúc}
+\label{subsec:sent_perclass_avg}
+
+Bảng~\ref{tab:sent_perclass_avg} báo cáo F1 của từng nhãn cảm xúc
+khi phân loại sentiment \emph{với aspect term gold}. Tập test mất cân
+bằng nghiêm trọng (Positive: 83,3\%, Negative: 14,7\%, Neutral: 1,9\%),
+dẫn đến F1-Neutral biến thiên lớn giữa các cấu hình.
+
+\textbf{Model tốt nhất:}
+\begin{itemize}
+  \item \textbf{F1-Negative}: AWM đạt \textbf{86,36\%}
+        (+5,41 điểm so với Baseline 80,95\%).
+  \item \textbf{F1-Neutral}: AWM đạt \textbf{66,67\%}
+        (+26,67 điểm so với Baseline 40,00\%).
+  \item \textbf{F1-Positive}: LCF-CDW+SLM đạt \textbf{98,25\%}
+        (Baseline = 97,90\%).
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\small
+\caption{F1 theo lớp cảm xúc -- BERT}
+\label{tab:sent_perclass_avg}
+\begin{threeparttable}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{F1-Positive} & \textbf{F1-Negative} & \textbf{F1-Neutral} \\
+\midrule
+Baseline                  & 97,90 & 80,95 & 40,00 \\
+\midrule
+LCF-CDM                   & 96,99 & 77,27 & 40,00 \\
+LCF-CDW                   & 97,91 & 78,05 & 44,44 \\
+\midrule
+BiToMe                    & 97,54 & 80,95 & 42,86 \\
+LCF-CDM + BiToMe          & 96,98 & 78,26 & 40,00 \\
+LCF-CDW + BiToMe          & 97,72 & 79,07 & 40,00 \\
+\midrule
+SLM                       & 97,72 & 75,56 & 60,00 \\
+LCF-CDM + SLM             & 97,35 & 80,95 & 40,00 \\
+LCF-CDW + SLM             & \textbf{98,25} & 80,95 & 60,00 \\
+\midrule
+\textbf{AWM}              & 98,24 & \textbf{86,36} & \textbf{66,67} \\
+LCF-CDM + AWM             & 97,89 & 80,95 & 50,00 \\
+\bottomrule
+\end{tabular}
+\end{threeparttable}
+\end{table}
+
+\begin{itemize}
+  \item \textbf{F1-Positive} đạt trên 97\% ở mọi cấu hình nhờ nhãn
+        chiếm đa số; sự khác biệt giữa các mô hình không đáng kể
+        ($\leq 1,26$ điểm).
+  \item \textbf{AWM nổi bật ở nhãn thiểu số}: F1-Negative tốt nhất
+        (86,36\%) và F1-Neutral tốt nhất (66,67\%). Cơ chế
+        attention-weighted merging ưu tiên giữ lại token mang tín hiệu
+        phân biệt cho nhãn hiếm.
+  \item \textbf{LCF-CDM kết hợp AWM không cải thiện}: kết hợp LCF-CDM
+        làm giảm cả ba F1 so với AWM đơn, cho thấy mặt nạ cứng CDM
+        cạnh tranh với cơ chế trọng số attention.
+  \item \textbf{SLM và LCF-CDW+SLM} đạt F1-Neutral = 60,00\%,
+        xếp thứ hai sau AWM.
+\end{itemize}
+
+% ============================================================
+\subsection{F1 theo lớp category}
+\label{subsec:cat_perclass_avg}
+
+Bảng~\ref{tab:cat_perclass_avg} báo cáo F1 phân loại category
+\emph{với aspect term gold}. Hai nhãn hiếm nhất là
+\textbf{BRANDING} (3,6\% train) và \textbf{LOYALTY} (1,6\% train),
+dẫn đến F1 thấp và biến thiên lớn.
+
+\textbf{Kết quả tốt nhất theo từng category:}
+\begin{itemize}
+  \item \textbf{AMENITY}: LCF-CDW + SLM đạt \textbf{93,33\%}.
+  \item \textbf{BRANDING}: LCF-CDM + AWM đạt \textbf{90,00\%}.
+  \item \textbf{EXPERIENCE}: BiToMe đạt \textbf{83,08\%}.
+  \item \textbf{FACILITY}: AWM đạt \textbf{91,46\%}.
+  \item \textbf{LOYALTY}: 10/11 cấu hình cùng đạt \textbf{92,31\%}.
+  \item \textbf{SERVICE}: BiToMe đạt \textbf{97,73\%}.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\small
+\caption{F1 theo lớp category -- BERT Joint, aspect term gold}
+\label{tab:cat_perclass_avg}
+\begin{threeparttable}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Cấu hình}
+  & \textbf{AMENITY} & \textbf{BRANDING} & \textbf{EXPERIENCE}
+  & \textbf{FACILITY} & \textbf{LOYALTY} & \textbf{SERVICE} \\
+\midrule
+Baseline
+  & 92,52 & 76,19 & 73,68 & 89,22 & \textbf{92,31} & 95,60 \\
+\midrule
+LCF-CDM
+  & 90,78 & 78,26 & 75,41 & 90,20 & 85,71 & 95,03 \\
+LCF-CDW
+  & 90,20 & 72,73 & 79,31 & 88,32 & \textbf{92,31} & 96,13 \\
+\midrule
+BiToMe
+  & 88,73 & 85,71 & \textbf{83,08} & 87,92 & \textbf{92,31} & \textbf{97,73} \\
+LCF-CDM + BiToMe
+  & 91,16 & 76,19 & 80,65 & 90,64 & \textbf{92,31} & 95,51 \\
+LCF-CDW + BiToMe
+  & 92,21 & 81,82 & 79,37 & 89,47 & \textbf{92,31} & 95,60 \\
+\midrule
+SLM
+  & 89,93 & 81,82 & 71,19 & 87,44 & \textbf{92,31} & 95,60 \\
+LCF-CDM + SLM
+  & 91,03 & 76,19 & 80,00 & 89,86 & \textbf{92,31} & 96,63 \\
+LCF-CDW + SLM
+  & \textbf{93,33} & 72,73 & 75,00 & 89,55 & \textbf{92,31} & 95,60 \\
+\midrule
+AWM
+  & 91,89 & 78,26 & 78,69 & \textbf{91,46} & \textbf{92,31} & 95,56 \\
+LCF-CDM + AWM
+  & 90,07 & \textbf{90,00} & 74,19 & 89,11 & \textbf{92,31} & 95,45 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+  \small
+  \item[†] Giá trị in đậm: tốt nhất trong cột.
+  \item[§] F1 tính với aspect term gold; phân loại độc lập category.
+  \item[¶] Tỉ lệ train: FACILITY 30,9\%, SERVICE 28,8\%, AMENITY 23,8\%,
+        EXPERIENCE 11,4\%, BRANDING 3,6\%, LOYALTY 1,6\%.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+\textbf{Nhận xét:}
+\begin{itemize}
+  \item \textbf{SERVICE và FACILITY} (hai nhãn nhiều nhất trong train)
+        ổn định ở mức 95--98\% và 87--91\% trên mọi cấu hình.
+  \item \textbf{LOYALTY} đạt 92,31\% ở 10/11 cấu hình; chỉ LCF-CDM
+        thấp hơn (85,71\%) do mặt nạ cứng CDM ảnh hưởng nhãn hiếm.
+  \item \textbf{BRANDING và EXPERIENCE} là hai nhãn có độ biến thiên
+        lớn nhất (BRAND: 72--90\%; EXP: 71--83\%), phản ánh khó khăn
+        khi phân biệt các khía cạnh có ngữ nghĩa gần nhau.
+  \item \textbf{BiToMe nổi bật ở EXPERIENCE} (83,08\%) và \textbf{SERVICE}
+        (97,73\%), trong khi \textbf{AWM} dẫn đầu ở \textbf{FACILITY}
+        (91,46\%), cho thấy mỗi chiến lược token merging phù hợp với
+        phân phối nhãn khác nhau.
+  \item \textbf{LCF-CDM + AWM} đạt BRANDING cao nhất (90,00\%), cho
+        thấy mặt nạ cứng CDM kết hợp attention-weighted merging có lợi
+        riêng cho nhãn hiếm có đặc trưng phân biệt rõ.
+\end{itemize}
+
+% ============================================================
+\subsection{Tóm tắt: model tốt nhất cho task 3 nhãn}
+\label{subsec:best_model_summary}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tóm tắt kết quả tốt nhất theo từng độ đo -- BERT Joint}
+\label{tab:best_model_summary}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Độ đo} & \textbf{Cấu hình tốt nhất}
+  & \textbf{Giá trị} & \textbf{Baseline} & $\Delta$ \\
+\midrule
+E2E Micro-F1      & AWM             & \textbf{70,91} & 69,95 & $+0,96$ \\
+E2E Macro-F1      & AWM             & \textbf{57,20} & 51,21 & $+5,99$ \\
+Oracle Acc        & AWM             & \textbf{88,14} & 86,54 & $+1,60$ \\
+\midrule
+F1-Positive       & LCF-CDW + SLM   & \textbf{98,25} & 97,90 & $+0,35$ \\
+F1-Negative       & AWM             & \textbf{86,36} & 80,95 & $+5,41$ \\
+F1-Neutral        & AWM             & \textbf{66,67} & 40,00 & $+26,67$ \\
+\midrule
+F1-AMENITY        & LCF-CDW + SLM   & \textbf{93,33} & 92,52 & $+0,81$ \\
+F1-BRANDING       & LCF-CDM + AWM   & \textbf{90,00} & 76,19 & $+13,81$ \\
+F1-EXPERIENCE     & BiToMe          & \textbf{83,08} & 73,68 & $+9,40$ \\
+F1-FACILITY       & AWM             & \textbf{91,46} & 89,22 & $+2,24$ \\
+F1-LOYALTY        & 10/11 cấu hình  & \textbf{92,31} & 92,31 & $\pm0,00$ \\
+F1-SERVICE        & BiToMe          & \textbf{97,73} & 95,60 & $+2,13$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Kết luận:}
+\begin{itemize}
+  \item \textbf{AWM là lựa chọn tốt nhất tổng thể} cho task 3 nhãn:
+        đứng đầu về E2E Micro-F1, E2E Macro-F1, Oracle Acc,
+        F1-Negative và F1-Neutral cùng một lúc.
+  \item \textbf{BiToMe} là lựa chọn thứ hai về E2E Micro-F1 (69,32\%)
+        và xuất sắc ở EXPERIENCE (+9,40 so với baseline) và SERVICE
+        (+2,13), với thời gian huấn luyện thấp hơn AWM ($\approx393$\,s
+        so với $719$\,s).
+  \item \textbf{Kết hợp LCF + AWM không cải thiện AWM}: E2E Macro-F1
+        giảm từ 57,20 (AWM) xuống 51,03 (LCF-CDM+AWM). Điều này gợi
+        ý cơ chế attention-weighted merging đã tích hợp ngầm thông tin
+        context và không được lợi thêm từ LCF.
+\end{itemize}

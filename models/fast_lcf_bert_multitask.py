@@ -204,6 +204,7 @@ class FastLcfBertMultiTask(nn.Module):
         self._use_cdm = use_cdm
         self._use_tome = use_tome
         self._tome_resize = tome_resize
+        self._tome_merge_strategy = tome_merge_strategy
         self._srd_threshold = srd_threshold
         self._use_pre_tome = use_pre_tome
 
@@ -300,20 +301,37 @@ class FastLcfBertMultiTask(nn.Module):
         lcf_vec: torch.Tensor,         # (B, L) float – binary aspect indicator
     ) -> dict:
         # ── Encode: standard BERT or pre-BERT-merge split path ────────────
+        # Need BERT attention weights when using attention_weighted merge strategy
+        need_attn = (
+            self._use_tome
+            and self._tome_merge_strategy == "attention_weighted"
+            and not self._use_pre_tome
+        )
+
         if self._use_pre_tome:
             hidden, lcf_vec, attention_mask = self._pre_bert_merge(
                 input_ids, attention_mask, lcf_vec
             )
+            attention_weights = None
         else:
-            bert_out = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+            bert_out = self.bert(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                output_attentions=need_attn,
+            )
             hidden = bert_out.last_hidden_state                         # (B, L, H)
+            attention_weights = None
+            if need_attn and getattr(bert_out, "attentions", None):
+                # CLS attention from last layer, averaged over heads: (B, L)
+                attention_weights = bert_out.attentions[-1][:, :, 0, :].mean(dim=1)
 
         # ── Post-BERT ToMe: runs on UNMASKED global hidden so the global
         # branch is not corrupted by LCF.  The aspect indicator propagates
         # through merges (max over merged positions).
         if self._use_tome:
             _, hidden, lcf_vec, new_attn_mask = self.tome.forward_with_trace(
-                hidden, lcf_vec, attention_mask.float()
+                hidden, lcf_vec, attention_mask.float(),
+                attention_weights=attention_weights,
             )
             if new_attn_mask is not None:
                 attention_mask = new_attn_mask.long()
