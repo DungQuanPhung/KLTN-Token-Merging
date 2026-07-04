@@ -28,7 +28,32 @@ Toàn bộ nội dung luận văn (LaTeX) nằm ở [`thesis/`](thesis/README.md
 
 Checkpoint mặc định (`checkpoints/gas_t5_ate/best` và `runs_joint/lcf_scm_cdm_resize`) đã có sẵn trong repo, có thể chạy thẳng không cần train lại. Thứ tự khởi động: **Ollama (nếu dùng UOS) → Backend → Frontend**.
 
-### 1. Ollama — chỉ cần nếu dùng tách câu bằng LLM (`CLAUSE_SPLIT_MODE=uos`)
+### Cách 1 — Script khởi động tất cả (Windows)
+
+```bat
+run_inference.bat
+```
+
+hoặc chạy trực tiếp bằng PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File run_inference.ps1
+```
+
+Script [`run_inference.ps1`](run_inference.ps1) tự động: kiểm tra/khởi động Ollama, kiểm tra/pull model `qwen3:8b`, cài `frontend/node_modules` nếu chưa có, rồi mở **3 cửa sổ PowerShell riêng** cho Ollama, Backend (dùng Python trong `.venv`) và Frontend. Đóng từng cửa sổ để dừng service tương ứng.
+
+Tuỳ chọn:
+```powershell
+# Đổi chế độ tách câu (mặc định: uos)
+powershell -ExecutionPolicy Bypass -File run_inference.ps1 -ClauseSplitMode rulebase
+
+# Bỏ qua bước kiểm tra/khởi động Ollama (đã tự chạy sẵn, hoặc dùng none/rulebase)
+powershell -ExecutionPolicy Bypass -File run_inference.ps1 -SkipOllama
+```
+
+### Cách 2 — Chạy thủ công từng bước
+
+#### 1. Ollama — chỉ cần nếu dùng tách câu bằng LLM (`CLAUSE_SPLIT_MODE=uos`)
 
 ```bash
 ollama serve
@@ -37,7 +62,7 @@ ollama pull qwen3:8b
 
 Nếu không chạy Ollama, dùng `CLAUSE_SPLIT_MODE=none` hoặc `rulebase` thay thế. UOS cũng tự fallback về câu gốc nếu Ollama không kết nối được (không crash).
 
-### 2. Backend (FastAPI)
+#### 2. Backend (FastAPI)
 
 ```bash
 # Windows (Command Prompt)
@@ -50,7 +75,7 @@ CLAUSE_SPLIT_MODE=uos uvicorn server.app:app --host 0.0.0.0 --port 5000
 
 Các biến môi trường khác (`ATE_CHECKPOINT`, `APC_CHECKPOINT_DIR`, `BERT_NAME`) giữ mặc định nếu không set — xem chi tiết ở [Biến môi trường](#biến-môi-trường). Backend log dòng `[server] Loading pipeline: ATE=... APC=... clause_split_mode=...` khi khởi động thành công.
 
-### 3. Frontend (React + Vite)
+#### 3. Frontend (React + Vite)
 
 ```bash
 cd frontend
@@ -160,6 +185,8 @@ thesis_apc_baseline/
 │   ├── run_multiseed.py            # Huấn luyện nhiều seed, tổng hợp bảng cho luận văn
 │   └── run_multiseed_ate.py        # Tương tự, cho module ATE
 │
+├── run_inference.ps1               # Khởi động Ollama + Backend + Frontend (Windows)
+├── run_inference.bat               # Wrapper double-click cho run_inference.ps1
 └── requirements.txt
 ```
 
@@ -638,4 +665,4 @@ Xuất hình vào `thesis/figures/`.
 - **GAS:** Zhang et al. (2021). *Towards Generative Aspect-Based Sentiment Analysis.* ACL-IJCNLP 2021.
 - **PyABSA:** Yang et al. *PyABSA: A Modularized Framework for Reproducible Aspect-based Sentiment Analysis.*
 
-lcf bipartite tome cdm 
+scm cdm resize uos 

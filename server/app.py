@@ -77,7 +77,7 @@ def _get_env_int(name: str, default: int) -> int:
 
 
 ATE_CHECKPOINT = _get_env_str("ATE_CHECKPOINT", "checkpoints/gas_t5_ate/best")
-APC_CHECKPOINT_DIR = _get_env_str("APC_CHECKPOINT_DIR", "runs_joint/lcf_bip_resize")
+APC_CHECKPOINT_DIR = _get_env_str("APC_CHECKPOINT_DIR", "runs_joint/lcf_scm_cdm_resize")
 BERT_NAME = _get_env_str("BERT_NAME", "bert-base-uncased")
 CLAUSE_SPLIT_MODE = _get_env_str("CLAUSE_SPLIT_MODE", "none")  # "none" | "rulebase" | "uos"
 
