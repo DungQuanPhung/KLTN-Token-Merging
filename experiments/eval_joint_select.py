@@ -16,7 +16,7 @@ Usage (from thesis_apc_baseline/):
     # Chỉ định runs-dir + tên folder
     python experiments/eval_joint_select.py --model-type bert \\
         --runs-dir Bert \\
-        --folders "baseline_balanced" "lcf_attn_cdm_resize" "lcf_seq_cdm_resize"
+        --folders "baseline_balanced" "lcf_scm_cdm_resize" "lcf_seq_cdm_resize"
 
     # Custom ATE file và output CSV
     python experiments/eval_joint_select.py --model-type bert \\

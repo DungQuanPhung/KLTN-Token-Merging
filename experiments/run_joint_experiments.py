@@ -145,11 +145,11 @@ CONFIGS: List[Tuple] = [
     #    5.  lcf_bip_cdw_compact  — post-BERT Bip + CDW
     #    6.  lcf_seq_cdm_compact  — post-BERT Seq + CDM
     #    7.  lcf_seq_cdw_compact  — post-BERT Seq + CDW
-    #    8.  lcf_attn_cdm_compact — post-BERT Attn + CDM
-    #    9.  lcf_attn_cdw_compact — post-BERT Attn + CDW
+    #    8.  lcf_scm_cdm_compact  — post-BERT SCM + CDM
+    #    9.  lcf_scm_cdw_compact  — post-BERT SCM + CDW
     #   10.  lcf_pre_bip          — pre-BERT Bip (no post-BERT merge)
     #   11.  lcf_pre_seq          — pre-BERT Seq (no post-BERT merge)
-    #   12.  lcf_pre_attn         — pre-BERT Attn (no post-BERT merge)
+    #   12.  lcf_pre_scm          — pre-BERT SCM (no post-BERT merge)
     #
     # Baseline
     # (False, False, False, True, "bipartite",          False, "Baseline (Balanced)",    "baseline_balanced"),
@@ -161,15 +161,15 @@ CONFIGS: List[Tuple] = [
     # (True,  False, True,  False, "bipartite",          False, "LCF+Bip CDW (compact)",  "lcf_bip_cdw_compact"),
     # (True,  True,  True,  True, "sequential_local",   False, "LCF+Seq CDM (compact)",  "lcf_seq_cdm_compact"),
     # (True,  False, True,  True, "sequential_local",   False, "LCF+Seq CDW (compact)",  "lcf_seq_cdw_compact"),
-    (True,  True,  True,  False, "attention_weighted", False, "LCF+Attn CDM (compact)", "lcf_attn_cdm_compact"),
-    (True,  False, True,  False, "attention_weighted", False, "LCF+Attn CDW (compact)", "lcf_attn_cdw_compact"),
-    (True,  True,  True,  True, "attention_weighted", False, "LCF+Attn CDM (resize)", "lcf_attn_cdm_resize"),
-    (True,  False, True,  True, "attention_weighted", False, "LCF+Attn CDW (resize)", "lcf_attn_cdw_resize"),
+    (True,  True,  True,  False, "sequential_cosine", False, "LCF+SCM CDM (compact)", "lcf_scm_cdm_compact"),
+    (True,  False, True,  False, "sequential_cosine", False, "LCF+SCM CDW (compact)", "lcf_scm_cdw_compact"),
+    (True,  True,  True,  True, "sequential_cosine", False, "LCF+SCM CDM (resize)", "lcf_scm_cdm_resize"),
+    (True,  False, True,  True, "sequential_cosine", False, "LCF+SCM CDW (resize)", "lcf_scm_cdw_resize"),
     # ── Pre-BERT ToMe (merge at embedding level BEFORE BERT encoder) ──────────
     # use_tome=False → no post-BERT merge; tome_resize unused when use_tome=False
     # (False,  False,  True, False, "bipartite",          False,  "Bip",             "bip"),
     # (False,  False,  True, False, "sequential_local",   False,  "Seq",             "seq"),
-    # (False,  False,  True, False, "attention_weighted", False,  "Attn",            "attn"),
+    # (False,  False,  True, False, "sequential_cosine", False,  "SCM",             "scm"),
     # ── Pre-BERT + Post-BERT combined ─────────────────────────────────────────
     # (True,  True,  True,  False, "bipartite",          True,  "LCF+Pre+PostBip",        "lcf_pre_post_bip"),
     # (True,  True,  True,  False, "sequential_local",   True,  "LCF+Pre+PostSeq",        "lcf_pre_post_seq"),

@@ -131,21 +131,21 @@ ALL_CONFIGS: List[Tuple] = [
     # 4–6. ToMe only
     (False, False, True,  True,  "bipartite",          False, "BiToMe",      "bip"),
     (False, False, True,  True,  "sequential_local",   False, "SLM",         "seq"),
-    (False, False, True,  True,  "attention_weighted", False, "AWM",         "attn"),
+    (False, False, True,  True,  "sequential_cosine",  False, "SCM",         "scm"),
     # 7–12. LCF + ToMe (resize)
     (True,  True,  True,  True,  "bipartite",          False, "BiToMe+CDM",  "lcf_bip_cdm"),
     (True,  False, True,  True,  "bipartite",          False, "BiToMe+CDW",  "lcf_bip_cdw"),
     (True,  True,  True,  True,  "sequential_local",   False, "SLM+CDM",     "lcf_seq_cdm"),
     (True,  False, True,  True,  "sequential_local",   False, "SLM+CDW",     "lcf_seq_cdw"),
-    (True,  True,  True,  True,  "attention_weighted", False, "AWM+CDM",     "lcf_attn_cdm"),
-    (True,  False, True,  True,  "attention_weighted", False, "AWM+CDW",     "lcf_attn_cdw"),
+    (True,  True,  True,  True,  "sequential_cosine",  False, "SCM+CDM",     "lcf_scm_cdm"),
+    (True,  False, True,  True,  "sequential_cosine",  False, "SCM+CDW",     "lcf_scm_cdw"),
 ]
 
 # ─── 4 compact configs (for tab:compact_vs_resize comparison) ─────────────────
 # Only run with --include-compact flag
 
 COMPACT_CONFIGS: List[Tuple] = [
-    (True,  True,  True,  False, "attention_weighted", False, "AWM+CDM(compact)",    "lcf_attn_cdm_compact"),
+    (True,  True,  True,  False, "sequential_cosine",  False, "SCM+CDM(compact)",    "lcf_scm_cdm_compact"),
     (True,  True,  True,  False, "bipartite",          False, "BiToMe+CDM(compact)", "lcf_bip_cdm_compact"),
     (True,  True,  True,  False, "sequential_local",   False, "SLM+CDM(compact)",    "lcf_seq_cdm_compact"),
     (True,  False, True,  False, "sequential_local",   False, "SLM+CDW(compact)",    "lcf_seq_cdw_compact"),
@@ -161,21 +161,21 @@ E2E_BERT_CONFIGS = [
     ("GAS + BiTome",     "bip"),
     ("GAS + SLM + CDM",  "lcf_seq_cdm"),
     ("GAS + SLM + CDW",  "lcf_seq_cdw"),
-    ("GAS + AWM + CDM",  "lcf_attn_cdm"),
+    ("GAS + SCM + CDM",  "lcf_scm_cdm"),
 ]
 
 # tab:t5_results — 5 T5 configs
 E2E_T5_CONFIGS = [
     ("GAS + Base",   "baseline"),
     ("BipTome + CDM", "lcf_bip_cdm"),
-    ("AWM + CDM",    "lcf_attn_cdm"),
+    ("SCM + CDM",    "lcf_scm_cdm"),
     ("SLM + CDM",    "lcf_seq_cdm"),
     ("SLM + CDW",    "lcf_seq_cdw"),
 ]
 
 # tab:compact_vs_resize — 4 config pairs (resize_id, compact_id, display_name)
 COMPACT_VS_RESIZE_CONFIGS = [
-    ("lcf_attn_cdm", "lcf_attn_cdm_compact", "AWM + CDM"),
+    ("lcf_scm_cdm", "lcf_scm_cdm_compact", "SCM + CDM"),
     ("lcf_bip_cdm",  "lcf_bip_cdm_compact",  "BiTome + CDM"),
     ("lcf_seq_cdm",  "lcf_seq_cdm_compact",  "SLM + CDM"),
     ("lcf_seq_cdw",  "lcf_seq_cdw_compact",  "SLM + CDW"),
@@ -747,12 +747,12 @@ def print_thesis_tables(agg: List[Dict], ate_f1: float = GAS_ATE_F1,
     split_configs = [
         ("bert", "BERT + Base",          "baseline"),
         ("bert", "BERT + BiToMe + CDM",  "lcf_bip_cdm"),
-        ("bert", "BERT + AWM + CDM",     "lcf_attn_cdm"),
+        ("bert", "BERT + SCM + CDM",     "lcf_scm_cdm"),
         ("bert", "BERT + SLM + CDM",     "lcl_seq_cdm"),
         ("bert", "BERT + SLM + CDW",     "lcf_seq_cdw"),
         ("t5",   "T5 + Base",            "baseline"),
         ("t5",   "T5 + BiToMe + CDM",    "lcf_bip_cdm"),
-        ("t5",   "T5 + AWM + CDM",       "lcf_attn_cdm"),
+        ("t5",   "T5 + SCM + CDM",       "lcf_scm_cdm"),
         ("t5",   "T5 + SLM + CDM",       "lcf_seq_cdm"),
         ("t5",   "T5 + SLM + CDW",       "lcf_seq_cdw"),
     ]

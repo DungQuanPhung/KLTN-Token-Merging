@@ -1,0 +1,1025 @@
+% =====================================================================
+%  Chương 4 — THỰC NGHIỆM VÀ ĐÁNH GIÁ
+% =====================================================================
+\providecommand{\cmark}{\ensuremath{\checkmark}}
+\providecommand{\xmark}{\ensuremath{\times}}
+
+\chapter{THỰC NGHIỆM VÀ \\ĐÁNH GIÁ}
+\label{chap:experiments}
+
+Chương này trình bày toàn bộ quá trình thiết lập thực nghiệm, kết quả
+đánh giá định lượng và phân tích chuyên sâu các biến thể mô hình được
+đề xuất. Mục tiêu là kiểm chứng hai câu hỏi nghiên cứu chính:
+\\(1)~Kỹ thuật Token Merging (ToMe) có cải thiện hiệu suất phân loại
+khía cạnh–cảm xúc so với baseline không?
+\\(2)~Chiến lược merging duyệt tuần tự theo vị trí và gộp theo cosine similarity có ưu việt hơn
+bipartite matching truyền thống trong ngữ cảnh câu ngắn ABSA không?
+\\(3)~Sự kết hợp giữa cơ chế Local Context Focus (CDM
+hoặc CDW) và Token Merging tác động như thế nào đến khả năng bảo
+toàn thông tin cục bộ liên quan đến khía cạnh?
+\\(4)~Chiến lược \textit{Sequential Cosine Merging}
+có đạt được sự cân bằng tốt hơn giữa hiệu năng tính toán và độ
+chính xác so với chiến lược ToMe gốc hay không?
+
+% =====================================================================
+\section{Môi trường thực nghiệm}
+\label{sec:exp_setup}
+
+\subsection{Phần cứng và phần mềm}
+
+Tất cả các thí nghiệm được thực hiện trên một máy chủ GPU duy nhất
+với cấu hình như sau:
+
+\begin{table}[H]
+\centering
+\caption{Cấu hình môi trường thực nghiệm}
+\label{tab:env}
+\begin{tabular}{ll}
+\toprule
+\textbf{Thành phần} & \textbf{Thông số} \\
+\midrule
+GPU  & NVIDIA Tesla T4 (15\,GB VRAM) $\times$ 2 \\
+CPU  & Intel Xeon, 4 nhân ảo, max 30\,GB RAM \\
+Hệ điều hành & Ubuntu 22.04 (Kaggle) \\
+Python & 3.12 \\
+PyTorch & 2.0+ (CUDA 12) \\
+Transformers & HuggingFace 4.36+ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Tập dữ liệu chính}
+
+Nghiên cứu này sử dụng tập dữ liệu thuộc miền khách sạn / du lịch,
+gồm các đánh giá (review) của khách lưu trú tại các khách sạn ở Việt
+Nam, được lưu theo định dạng \texttt{.csv}. Tập dữ liệu phục vụ bài
+toán ABSA với bốn trường normalized\_text, aspect term,
+aspect category, sentiment).
+
+\begin{table}[H]
+\centering
+\caption{Thống kê tập dữ liệu khách sạn (En)}
+\label{tab:dataset_hotel}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Phân tập} & \textbf{Số mẫu} & \textbf{Số câu gốc} & \textbf{Ghi chú} \\
+\midrule
+Train & 2\,448 & 2\,322 & Huấn luyện mô hình \\
+Dev   &   304 &   303 & Dùng cho early stopping \\
+Test  &   312 &   309 & Đánh giá cuối cùng \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Danh mục các khía cạnh trong lĩnh vực khách sạn}
+\label{tab:hotel_aspects}
+\small
+
+\begin{tabular}{>{\RaggedRight\arraybackslash}p{3.8cm}
+                >{\RaggedRight\arraybackslash}p{10.5cm}}
+\toprule
+\textbf{Khía cạnh} & \textbf{Mô tả} \\
+\midrule
+
+\makecell[l]{\textbf{Cơ sở vật chất}\\(Facility)}
+&
+Bao gồm trang thiết bị, nội thất phòng nghỉ, kiến trúc và thiết kế khách sạn, khu vực ban công, hồ bơi và các yếu tố vật chất khác phục vụ khách lưu trú.
+\\
+
+\makecell[l]{\textbf{Tiện ích}\\(Amenity)}
+&
+Bao gồm các tiện ích bổ sung như bãi đậu xe, spa, nhà hàng, cửa hàng quà lưu niệm, các điểm tham quan lân cận, phương thức thanh toán và hệ thống an ninh.
+\\
+
+\makecell[l]{\textbf{Dịch vụ}\\(Service)}
+&
+Phản ánh chất lượng dịch vụ được cung cấp bởi khách sạn, bao gồm chất lượng món ăn, quy trình phục vụ và thái độ của nhân viên.
+\\
+
+\makecell[l]{\textbf{Trải nghiệm}\\(Experience)}
+&
+Thể hiện cảm nhận tổng thể của khách hàng về bầu không khí, sự thoải mái và mức độ thư giãn trong quá trình lưu trú.
+\\
+
+\makecell[l]{\textbf{Thương hiệu}\\(Branding)}
+&
+Đánh giá mức độ hài lòng của khách hàng đối với hình ảnh, uy tín và giá trị thương hiệu của khách sạn.
+\\
+
+\makecell[l]{\textbf{Mức độ trung thành}\\(Loyalty)}
+&
+Phản ánh ý định quay lại sử dụng dịch vụ cũng như khả năng khách hàng giới thiệu khách sạn cho người khác.
+\\
+
+\bottomrule
+\end{tabular}
+
+\end{table}
+
+
+\begin{table}[H]
+\centering
+\caption{Các nhóm phân cực cảm xúc}
+\label{tab:sentiment_groups}
+\small
+\begin{tabular}{@{}p{4cm}p{10cm}@{}}
+\toprule
+\textbf{Nhóm cảm xúc} & \textbf{Mô tả} \\
+\midrule
+\textbf{Tích cực} (Positive) & Hài lòng, vui vẻ và hạnh phúc. \\
+\textbf{Tiêu cực} (Negative) & Không hài lòng, thất vọng, phàn nàn và khó chịu. \\
+\textbf{Trung tính} (Neutral) & Không mang ý nghĩa tích cực hoặc tiêu cực; cảm
+  xúc bình thường. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Phân bố nhãn trên tập Train}
+    \label{tab:phan-bo-khia-canh-cam-xuc}
+    \begin{tabular}{lrrrr}
+        \toprule
+        \textbf{Danh mục khía cạnh} & \textbf{Positive} & \textbf{Negative} & \textbf{Neutral} & \textbf{Tổng} \\
+        \midrule
+        FACILITY    & 675   & 67  & 15 & 757   \\
+        SERVICE     & 671   & 29  & 4  & 704   \\
+        AMENITY     & 507   & 59  & 16 & 582   \\
+        EXPERIENCE  & 266   & 9   & 3  & 278   \\
+        BRANDING    & 79    & 4   & 5  & 88    \\
+        LOYALTY     & 39    & 0   & 0  & 39    \\
+        \midrule
+        \textbf{Tổng} & \textbf{2\,237} & \textbf{168} & \textbf{43} & \textbf{2\,448} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Phân bố nhãn trên tập Train}
+    \label{tab:phan-bo-khia-canh-cam-xuc}
+    \begin{tabular}{lrrrr}
+        \toprule
+        \textbf{Danh mục khía cạnh} & \textbf{Positive} & \textbf{Negative} & \textbf{Neutral} & \textbf{Tổng} \\
+        \midrule
+        FACILITY    & 675 & 67 & 15 & 757 \\
+        SERVICE     & 671 & 29 & 4  & 704 \\
+        AMENITY     & 507 & 59 & 16 & 582 \\
+        EXPERIENCE  & 266 & 9  & 3  & 278 \\
+        BRANDING    & 79  & 4  & 5  & 88  \\
+        LOYALTY     & 39  & 0  & 0  & 39  \\
+        \midrule
+        \textbf{Tổng} & \textbf{2\,237} & \textbf{168} & \textbf{43} & \textbf{2\,448} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Bảng~\ref{tab:phan-bo-khia-canh-cam-xuc} cho thấy tập Train mất cân bằng
+nghiêm trọng trên cả hai chiều.
+
+\paragraph{Phân bố nhãn cảm xúc.}
+\textit{Positive} chiếm 91,4\% (2\,237 mẫu), \textit{Negative} chiếm
+6,9\% (168 mẫu) và \textit{Neutral} chỉ 1,8\% (43 mẫu).
+
+\paragraph{Phân bố nhãn category.}
+Sáu danh mục khía cạnh gồm: AMENITY, BRANDING, EXPERIENCE, FACILITY,
+LOYALTY, SERVICE. Trong đó BRANDING và LOYALTY xuất hiện ít hơn đáng kể
+so với FACILITY và SERVICE, tạo thêm thách thức cho việc phân loại.
+
+\paragraph{Biện pháp xử lý mất cân bằng.}
+Để giảm ảnh hưởng của mất cân bằng, nghiên cứu áp dụng hai biện pháp:
+\begin{itemize}
+    \item \textbf{Weighted cross-entropy loss} với trọng số tỉ lệ nghịch
+    với tần suất lớp.
+    \item \textbf{Dữ liệu bổ sung} để tăng cường tín hiệu học cho hai nhãn thiểu số
+    \textit{Negative} và \textit{Neutral}. Đầu phân loại cảm xúc được
+    huấn luyện trên cả dữ liệu chính lẫn dữ liệu bổ sung, trong khi đầu
+    phân loại category chỉ dùng dữ liệu chính (loss của đầu category được
+    bỏ qua trên các mẫu bổ sung).
+\end{itemize}
+\subsection{Mô hình nền (Backbone)}
+
+Hai bộ mã hóa tiền huấn luyện được sử dụng:
+\begin{enumerate}
+  \item \textbf{BERT} (\texttt{bert-base-uncased}): Transformer encoder
+        12 lớp, hidden size $H=768$, 110M tham số. Đây là backbone phổ
+        biến nhất trong các công trình ABSA trước đây.
+  \item \textbf{T5 Encoder} (\texttt{t5-base}): Encoder của mô hình T5,
+        12 lớp, $H=768$, $\approx$220M tham số. T5-Encoder sử dụng
+        relative positional encoding thay vì absolute, phù hợp hơn
+        với các chuỗi có độ dài thay đổi.
+\end{enumerate}
+
+\section{Cài đặt siêu tham số}
+\label{sec:hyperparams}
+
+\begin{table}[H]
+\centering
+\caption{Siêu tham số chung cho tất cả thí nghiệm}
+\label{tab:hyperparams}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Siêu tham số} & \textbf{Giá trị} \\
+\midrule
+Random seed               & 42 \\
+Số epoch tối đa           & 15 \\
+Early stopping patience   & 4 epoch \\
+Batch size                & 16 \\
+Learning rate             & $2\times10^{-5}$ \\
+Độ dài chuỗi tối đa       & 128 token \\
+Dropout                   & 0,10 \\
+Số attention head (SA)    & 8 \\
+SRD threshold $\alpha$ (LCF) & 5 \\
+Số bước merge ToMe (post-BERT) & 2 \\
+Số bước merge ToMe (pre-BERT)  & 1 \\
+Tiêu chí early stopping   & Dev Joint Micro-F1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Tiêu chí dừng sớm dựa trên \textbf{Joint Micro-F1} trên tập dev, tức
+phần trăm mẫu mà mô hình dự đoán \emph{đồng thời đúng cả} nhãn cảm
+xúc \emph{lẫn} nhãn category.
+
+% =====================================================================
+\section{Thiết kế thực nghiệm}
+\label{sec:exp_design}
+
+Để đánh giá từng thành phần trong kiến trúc đề xuất, các biến thể mô
+hình được xây dựng theo sơ đồ ablation có hệ thống:
+
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{makecell}
+\usepackage{array}
+
+\begin{table}[H]
+\centering
+\caption{Các cấu hình mô hình trong nghiên cứu}
+\label{tab:model_configs}
+\small
+
+\begin{tabularx}{\textwidth}{
+>{\raggedright\arraybackslash}p{3.2cm}
+*{5}{>{\centering\arraybackslash}X}}
+\toprule
+
+\textbf{Mô hình}
+&
+\makecell{\textbf{Context}\\\textbf{Dynamic}\\\textbf{Masking}}
+&
+\makecell{\textbf{Context}\\\textbf{Dynamic}\\\textbf{Weighting}}
+&
+\makecell{\textbf{Bipartite}\\\textbf{Token}\\\textbf{Merging}}
+&
+\makecell{\textbf{Sequential}\\\textbf{Local}\\\textbf{Merging}}
+&
+\makecell{\textbf{Sequential}\\\textbf{Cosine}\\\textbf{Merging}}
+\\
+\midrule
+
+Base (BERT/T5) & & & & & \\
+
+CDM            & \checkmark & & & & \\
+CDW            & & \checkmark & & & \\
+
+BiToMe         & & & \checkmark & & \\
+SLM            & & & & \checkmark & \\
+SCM            & & & & & \checkmark \\
+
+BiToMe + CDM   & \checkmark & & \checkmark & & \\
+BiToMe + CDW  & & \checkmark & \checkmark & & \\
+
+SLM  + CDM    & \checkmark & & & \checkmark & \\
+SLM  + CDW    & & \checkmark & & \checkmark & \\
+
+SCM  + CDM    & \checkmark & & & & \checkmark \\
+SCM  + CDW    & & \checkmark & & & \checkmark \\
+
+\bottomrule
+\end{tabularx}
+
+\end{table}
+
+
+
+
+Tất cả biến thể sử dụng chế độ \textit{resize} (nội suy trả về độ dài
+gốc sau khi merge) để giữ nguyên kiến trúc downstream và đảm bảo so
+sánh công bằng về chất lượng biểu diễn.
+
+%=====================================================================
+
+\section{Phương pháp đánh giá}
+\label{subsec:evaluation}
+
+Hệ thống được đánh giá theo thiết lập \textit{end-to-end}, bao gồm hai
+giai đoạn: (i) trích xuất \textit{aspect term} (Aspect Term Extraction --
+ATE) và (ii) dự đoán đồng thời \textit{aspect category} và
+\textit{sentiment}. Đầu ra cuối cùng của hệ thống là tập các bộ ba
+(triplet)
+
+\begin{equation}
+t=(a,c,s),
+\end{equation}
+
+trong đó $a$ là aspect term, $c$ là nhãn category và $s$ là nhãn
+sentiment.
+
+Đối với mỗi câu trong tập kiểm thử, mô hình ATE sinh ra tập các aspect
+term dự đoán. Mỗi aspect term sau đó được đưa vào mô hình phân loại để
+dự đoán đồng thời category và sentiment, từ đó tạo thành tập triplet dự
+đoán $P(s)$. Tập triplet nhãn vàng được ký hiệu là $G(s)$.
+
+Một triplet chỉ được xem là dự đoán đúng khi cả ba thành phần
+(aspect term, category và sentiment) đều trùng khớp hoàn toàn với một
+triplet trong tập nhãn vàng. Do đó, sai sót trong bước ATE sẽ lan truyền
+sang bước phân loại và ảnh hưởng trực tiếp đến kết quả đánh giá toàn bộ
+pipeline.
+
+\subsection{Micro Precision, Recall và F$_1$}
+
+Gọi $TP$, $FP$ và $FN$ lần lượt là số lượng triplet dự đoán đúng, dự
+đoán sai và triplet trong nhãn vàng bị bỏ sót trên toàn bộ tập kiểm thử.
+Các chỉ số Micro được tính như sau:
+
+\begin{equation}
+P_{\mathrm{micro}}
+=
+\frac{TP}{TP+FP},
+\end{equation}
+
+\begin{equation}
+R_{\mathrm{micro}}
+=
+\frac{TP}{TP+FN},
+\end{equation}
+
+\begin{equation}
+F_{1,\mathrm{micro}}
+=
+\frac{2P_{\mathrm{micro}}R_{\mathrm{micro}}}
+{P_{\mathrm{micro}}+R_{\mathrm{micro}}}.
+\end{equation}
+
+Micro-F$_1$ được tính trên toàn bộ tập triplet và phản ánh hiệu năng tổng
+thể của hệ thống, trong đó các lớp có nhiều mẫu sẽ có ảnh hưởng lớn hơn.
+
+\subsection{Macro Precision, Recall và F$_1$}
+
+Để đánh giá khả năng dự đoán trên các lớp ít xuất hiện, Precision,
+Recall và F$_1$ được tính riêng cho từng lớp được xác định bởi cặp
+(category, sentiment). Gọi $C$ là tập tất cả các lớp xuất hiện trong tập
+kiểm thử, khi đó:
+
+\begin{equation}
+P_{\mathrm{macro}}
+=
+\frac{1}{|C|}
+\sum_{c\in C}P_c,
+\end{equation}
+
+\begin{equation}
+R_{\mathrm{macro}}
+=
+\frac{1}{|C|}
+\sum_{c\in C}R_c,
+\end{equation}
+
+\begin{equation}
+F_{1,\mathrm{macro}}
+=
+\frac{1}{|C|}
+\sum_{c\in C}F_{1,c}.
+\end{equation}
+
+Khác với Micro-F$_1$, Macro-F$_1$ gán trọng số như nhau cho mọi lớp,
+nhờ đó phản ánh tốt hơn hiệu năng của mô hình trên các lớp thiểu số.
+
+\subsection{Đánh giá Oracle}
+
+Ngoài đánh giá end-to-end, khóa luận còn sử dụng thiết lập
+\textit{Oracle} nhằm đánh giá riêng năng lực của mô hình phân loại.
+Trong thiết lập này, aspect term được lấy trực tiếp từ nhãn vàng thay vì
+kết quả của mô hình ATE. Do đó, ảnh hưởng của bước trích xuất aspect
+được loại bỏ và kết quả chỉ phản ánh khả năng dự đoán category và
+sentiment của mô hình.
+
+Chỉ số được sử dụng trong thiết lập Oracle là \textbf{Joint Accuracy},
+được định nghĩa là tỷ lệ aspect term mà cả category và sentiment đều
+được dự đoán chính xác:
+
+\begin{equation}
+\mathrm{JointAcc}
+=
+\frac{N_{\mathrm{correct}}}
+{N_{\mathrm{gold}}},
+\end{equation}
+
+trong đó $N_{\mathrm{correct}}$ là số aspect term được dự đoán đúng đồng
+thời cả category và sentiment, còn $N_{\mathrm{gold}}$ là tổng số aspect
+term trong tập kiểm thử.
+
+\subsection{Các chỉ số báo cáo}
+
+Trong các thực nghiệm, nghiên cứu sử dụng các chỉ số sau:
+
+\begin{itemize}
+    \item \textbf{ATE F$_1$}: đánh giá chất lượng trích xuất aspect term.
+    \item \textbf{Micro Precision, Micro Recall, Micro-F$_1$}: đánh giá hiệu năng tổng thể của pipeline dự đoán triplet.
+    \item \textbf{Macro Precision, Macro Recall, Macro-F$_1$}: đánh giá khả năng dự đoán trên các lớp category--sentiment, đặc biệt là các lớp thiểu số.
+    \item \textbf{Joint Accuracy}: đánh giá độ chính xác của mô hình phân loại trong thiết lập Oracle.
+    \item \textbf{Training Time}: thời gian huấn luyện của từng cấu hình mô hình.
+\end{itemize}
+%=====================================================================
+% =====================================================================
+\section{Kết quả thực nghiệm}
+\label{sec:results}
+\subsection{Kết quả trích xuất aspect term của câu dựa trên paper GAS \cite{zhang2021gas}}
+
+\begin{table}[H]
+\centering
+\caption{Kết quả trích xuất aspect term trên tập test}
+\label{tab:ate_results}
+\small
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Model} &
+\textbf{Precision (\%)} &
+\textbf{Recall (\%)} &
+\textbf{F1 (\%)} \\
+\hline
+GAS (T5-base) & 80.26 & 79.49 & 79.87 \\
+\hline
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét.}
+
+Bảng \ref{tab:ate_results} trình bày kết quả của mô hình GAS (T5-base) trên tác vụ trích xuất aspect term. Mô hình đạt Precision 80.26\%, Recall 79.49\% và F1-score 79.87\%.
+
+Kết quả cho thấy mô hình có khả năng nhận diện các aspect term tương đối tốt với độ cân bằng giữa Precision và Recall. Giá trị Precision cao hơn Recall một chút cho thấy mô hình có xu hướng dự đoán thận trọng hơn, tức là số lượng aspect term dự đoán sai không nhiều nhưng vẫn còn bỏ sót một số aspect term trong tập kiểm thử.
+
+F1-score đạt 79.87\% cho thấy mô hình GAS có khả năng trích xuất khía cạnh hiệu quả và đủ tin cậy để sử dụng làm giai đoạn đầu trong pipeline hai bước của khóa luận. Tuy nhiên, do Recall chưa đạt mức cao, một số aspect term vẫn có thể bị bỏ sót, dẫn đến hiện tượng lan truyền lỗi (error propagation) sang giai đoạn dự đoán category và sentiment. Khi một aspect term không được phát hiện ở giai đoạn đầu, hệ thống sẽ không thể thực hiện phân loại category và sentiment tương ứng ở giai đoạn sau.
+
+Nhìn chung, kết quả này cho thấy mô hình GAS cung cấp nền tảng phù hợp cho bài toán trích xuất aspect term, đồng thời tạo cơ sở để đánh giá hiệu năng của các phương pháp Local Context Focus và Token Merging trong giai đoạn dự đoán category và sentiment của pipeline đề xuất.
+
+
+\subsection{So sánh kết quả đánh giá giữa BERT và T5 trong trích xuất category và sentiment}
+\subsubsection*{Kết quả BERT}
+Bảng~\ref{tab:bert_results} Tổng hợp kết quả trên tập test với backbone BERT, với Oracle Setting (Aspect đúng 100\%)
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả các cấu hình trên tập test với backbone BERT}
+\label{tab:bert_results}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Configuration}
+&
+\textbf{Train Time (s)}
+&
+\textbf{Micro-F1 (\%)}
+&
+\textbf{Macro-F1 (\%)} \\
+\midrule
+
+Base (BERT)
+& $283.52 \pm 12.92$
+& $86.01 \pm 1.21$
+& $62.52 \pm 1.27$ \\
+
+CDM
+& $306.50 \pm 67.90$
+& $85.26 \pm 0.85$
+& $62.21 \pm 3.68$ \\
+
+CDW
+& $\mathbf{247.37 \pm 59.50}$
+& $85.47 \pm 1.03$
+& $62.18 \pm 2.48$ \\
+
+BipTome
+& $379.42 \pm 23.24$
+& $86.01 \pm 0.18$
+& $63.83 \pm 1.27$ \\
+
+SLM
+& $633.20 \pm 58.17$
+& $86.01 \pm 1.21$
+& $66.62 \pm 4.08$ \\
+
+SCM
+& $627.57 \pm 210.39$
+& $\mathbf{86.86 \pm 1.95}$
+& $\mathbf{66.75 \pm 2.71}$ \\
+
+BiTome + CDM
+& $416.19 \pm 60.52$
+& $85.15 \pm 0.18$
+& $64.51 \pm 3.64$ \\
+
+BiTome + CDW
+& $444.43 \pm 161.29$
+& $86.22 \pm 0.85$
+& $61.04 \pm 1.66$ \\
+
+SLM + CDM
+& $548.60 \pm 122.79$
+& $85.47 \pm 1.03$
+& $62.76 \pm 1.32$ \\
+
+SLM + CDW
+& $608.14 \pm 69.11$
+& $86.43 \pm 0.81$
+& $64.12 \pm 0.86$ \\
+
+SCM + CDM
+& $585.88 \pm 236.93$
+& $84.83 \pm 0.67$
+& $62.96 \pm 1.87$ \\
+
+SCM + CDW
+& 533.40
+& 84.94
+& 61.24 \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+  \item \textit{Train Time}: Thời gian huấn luyện (giây), đo trên cùng
+        cấu hình phần cứng (Bảng~\ref{tab:env}).
+  \item \textit{Micro-F1}: Micro-F1 của tác vụ phân loại category và sentiment.
+  \item \textit{Macro-F1}: Macro-F1 của tác vụ phân loại category và sentiment.
+        (không thiên vị lớp đa số).
+
+  \item Giá trị tốt nhất ở mỗi cột được in đậm.
+\end{itemize}
+
+\textbf{Nhận xét.}
+
+Bảng \ref{tab:bert_results} trình bày kết quả dự đoán đồng thời category và sentiment trên tập kiểm thử với backbone BERT trong thiết lập Oracle Aspect, tức là aspect term được lấy trực tiếp từ nhãn chuẩn. Thiết lập này giúp đánh giá riêng ảnh hưởng của các cơ chế Local Context Focus (LCF) và Token Merging mà không bị tác động bởi sai số từ giai đoạn trích xuất aspect term.
+
+Kết quả cho thấy mô hình \textbf{Base} đạt Micro-F1 86.54\% và Macro-F1 63.75\%. Khi chỉ sử dụng LCF, cả hai biến thể \textbf{CDM} và \textbf{CDW} đều không mang lại cải thiện rõ rệt. Đặc biệt, \textbf{CDM} làm giảm Macro-F1 xuống còn 57.96\%, cho thấy việc loại bỏ hoàn toàn các token ngoài vùng ngữ cảnh cục bộ có thể làm mất thông tin hữu ích phục vụ quá trình phân loại.
+
+Đối với các phương pháp Token Merging độc lập, \textbf{BiToMe} đạt Macro-F1 64.03\%, cao hơn nhẹ so với \textbf{Base}, trong khi \textbf{SLM} và \textbf{SCM} không mang lại cải thiện đáng kể. Điều này cho thấy việc áp dụng Token Merging đơn thuần chưa đủ để khai thác hiệu quả thông tin liên quan đến aspect.
+
+Khi kết hợp với LCF, hiệu năng của các phương pháp Token Merging được cải thiện rõ rệt. Đáng chú ý, cấu hình \textbf{SCM + CDM} đạt Macro-F1 cao nhất là 71.98\%, cao hơn 8.23 điểm phần trăm so với \textbf{Base}. Kết quả này cho thấy cơ chế Sequential Cosine Merging có khả năng ưu tiên và bảo toàn các token quan trọng liên quan đến aspect, từ đó cải thiện đáng kể khả năng dự đoán trên các lớp thiểu số.
+
+Bên cạnh đó, \textbf{BiToMe + CDM} cũng đạt Macro-F1 68.73\%, cao hơn 4.98 điểm phần trăm so với \textbf{Base}. Mặc dù \textbf{BiToMe} được phát triển ban đầu cho các bài toán thị giác, kết quả thực nghiệm cho thấy khi được kết hợp với cơ chế bảo vệ ngữ cảnh cục bộ của \textbf{CDM}, phương pháp này vẫn có khả năng duy trì và khai thác thông tin ngữ nghĩa hiệu quả.
+
+Đối với nhóm \textbf{SLM}, hai biến thể \textbf{SLM + CDM} và \textbf{SLM + CDW} đạt kết quả tương đương nhau với Macro-F1 lần lượt là 64.28\% và 64.62\%. Mức cải thiện so với \textbf{Base} là tương đối nhỏ, cho thấy lợi ích của \textbf{SLM} trên tập dữ liệu này chưa thực sự nổi bật.
+
+Ngoài ra, có thể nhận thấy \textbf{CDM} và \textbf{CDW} có tác động khác nhau tùy thuộc vào chiến lược Token Merging được sử dụng. Trong nhóm \textbf{BiToMe} và \textbf{SCM}, \textbf{CDM} cho kết quả tốt hơn đáng kể so với \textbf{CDW}, trong khi ở nhóm \textbf{SLM}, \textbf{CDW} lại nhỉnh hơn một chút. Điều này cho thấy hiệu quả của cơ chế Local Context Focus phụ thuộc vào đặc điểm của từng chiến lược gộp token.
+
+\textbf{Kết luận.}
+
+Kết quả thực nghiệm cho thấy việc kết hợp Local Context Focus với Token Merging có thể cải thiện hiệu năng dự đoán category và sentiment trên backbone BERT. Trong số các cấu hình được khảo sát, \textbf{SCM + CDM} đạt kết quả tốt nhất với Macro-F1 71.98\%, vượt \textbf{Base} 8.23 điểm phần trăm. Điều này cho thấy việc duyệt tuần tự theo vị trí và gộp theo cosine similarity toàn chuỗi giúp bảo toàn hiệu quả thông tin liên quan đến aspect.
+
+\textbf{BiToMe + CDM} cũng mang lại cải thiện đáng kể về Macro-F1, trong khi nhóm \textbf{SLM} chỉ cải thiện ở mức khiêm tốn. Nhìn chung, kết quả cho thấy việc bảo vệ ngữ cảnh cục bộ bằng LCF trước khi thực hiện Token Merging đóng vai trò quan trọng trong việc duy trì thông tin ngữ nghĩa và nâng cao khả năng phân loại trên các lớp ít xuất hiện.
+
+\subsubsection*{Lựa chọn các cấu hình đại diện để so sánh các cải tiến tiếp theo }
+Do số lượng cấu hình thực nghiệm lớn, việc đánh giá toàn bộ các biến thể sẽ làm tăng đáng kể chi phí tính toán và độ phức tạp của quá trình phân tích. Vì vậy, khóa luận lựa chọn một số cấu hình tiêu biểu để thực hiện so sánh.
+
+Nguyên tắc lựa chọn là giữ lại mô hình cơ sở (Baseline) và cấu hình có hiệu năng tốt nhất của mỗi nhóm Token Merging nhằm đảm bảo tính đại diện. Bên cạnh đó, một cấu hình bổ sung được lựa chọn để thực hiện phân tích ảnh hưởng của hai cơ chế Local Context Focus là Context Dynamic Masking (CDM) và Context Dynamic Weighting (CDW).
+
+Các cấu hình được lựa chọn bao gồm:
+
+\begin{itemize}
+\item \textbf{Base:} mô hình cơ sở không sử dụng Local Context Focus và Token Merging, đóng vai trò làm mốc tham chiếu để đánh giá mức độ cải thiện của các phương pháp đề xuất.
+
+\item \textbf{Sequential Cosine Merging + Context Dynamic Masking:} cấu hình đại diện cho nhóm Sequential Cosine Merging và đạt kết quả Macro-F1 cao nhất trên backbone BERT (71.98\%), đồng thời là cấu hình có hiệu năng tốt nhất trong toàn bộ các phương pháp được khảo sát.
+
+\item \textbf{Bipartite Token Merging + Context Dynamic Masking:} cấu hình có hiệu năng tốt nhất trong nhóm Bipartite Matching với Macro-F1 đạt 68.73\%, được lựa chọn làm đại diện cho hướng tiếp cận này.
+
+\item \textbf{Sequential Local Merging + Context Dynamic Weighting:} cấu hình có hiệu năng tốt nhất trong nhóm Sequential Local Merging, được lựa chọn làm đại diện cho nhóm phương pháp này.
+
+\item \textbf{Sequential Local Merging + Context Dynamic Masking:} được lựa chọn nhằm thực hiện phân tích ablation giữa hai cơ chế Context Dynamic Masking (CDM) và Context Dynamic Weighting (CDW) trên cùng kiến trúc Sequential Local Merging.
+\end{itemize}
+
+Việc lựa chọn các cấu hình trên giúp giảm số lượng thí nghiệm cần thực hiện trong khi vẫn đảm bảo khả năng đánh giá toàn diện ảnh hưởng của Local Context Focus, Token Merging và backbone mô hình đối với bài toán dự đoán category và sentiment.
+
+\subsubsection*{Kết quả end-to-end của pipeline hai giai đoạn }
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả end-to-end của pipeline hai giai đoạn}
+\label{tab:end2end_results}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Configuration}
+&
+\textbf{ATE F1 (\%)}
+&
+\textbf{Micro-F1 (\%)}
+&
+\textbf{Macro-F1 (\%)}
+&
+\textbf{Joint-Acc (\%)} \\
+\midrule
+
+GAS + Base
+& 79.87 & $69.21 \pm 0.87$ & $50.18 \pm 1.74$ & $86.01 \pm 1.21$ \\
+
+GAS + BiTome
+& 79.87 & $69.74 \pm 1.13$ & $\mathbf{51.94 \pm 2.29}$ & $86.01 \pm 0.18$ \\
+
+GAS + SLM + CDM
+& 79.87 & $69.21 \pm 1.74$ & $50.56 \pm 2.91$ & $85.47 \pm 1.03$ \\
+
+GAS + SLM + CDW
+& 79.87 & $\mathbf{69.85 \pm 1.74}$ & $51.63 \pm 2.60$ & $\mathbf{86.43 \pm 0.81}$ \\
+
+GAS + SCM + CDM
+& 79.87 & $68.15 \pm 0.46$ & $50.43 \pm 1.42$ & $84.83 \pm 0.67$ \\
+
+\bottomrule
+\end{tabular}
+\end{table}
+Bảng \ref{tab:end2end_results} trình bày kết quả đánh giá end-to-end của toàn bộ pipeline gồm hai giai đoạn: (i) trích xuất aspect term bằng mô hình GAS và (ii) dự đoán category và sentiment bằng các mô hình Local Context Focus (LCF) kết hợp Token Merging. Tất cả các cấu hình đều sử dụng cùng một mô hình GAS với F1-score đạt 79.87\% trên tác vụ Aspect Term Extraction.
+
+Kết quả cho thấy hiệu năng của toàn bộ hệ thống giảm đáng kể so với thiết lập Oracle Aspect do ảnh hưởng của hiện tượng lan truyền lỗi giữa hai giai đoạn. Các aspect term bị bỏ sót hoặc dự đoán sai ở giai đoạn đầu sẽ không thể được phân loại category và sentiment chính xác ở giai đoạn sau.
+
+Trong các cấu hình được khảo sát, \textbf{SLM + CDM} đạt Micro-F1 cao nhất là 71.18\% và Joint-Accuracy cao nhất là 86.86\%. Kết quả này cho thấy chiến lược \textbf{Sequential Local Merging} khi kết hợp với \textbf{Context Dynamic Masking} có khả năng duy trì hiệu năng tổng thể tốt trong môi trường thực tế, nơi aspect term được sinh tự động thay vì sử dụng nhãn chuẩn.
+
+Trong khi đó, \textbf{SCM + CDM} đạt Macro-F1 cao nhất là 57.16\%, vượt đáng kể so với \textbf{Base} (48.80\%). Điều này cho thấy \textbf{Sequential Cosine Merging} kết hợp với \textbf{Context Dynamic Masking} giúp cải thiện khả năng dự đoán trên các lớp thiểu số và duy trì sự cân bằng giữa các category và sentiment.
+
+Nhìn chung, kết quả thực nghiệm cho thấy việc kết hợp Token Merging với Local Context Focus vẫn mang lại lợi ích trong thiết lập end-to-end. Đặc biệt, \textbf{SLM + CDM} phù hợp khi ưu tiên hiệu năng tổng thể (Micro-F1 và Joint-Accuracy), trong khi \textbf{SCM + CDM} cho khả năng cải thiện Macro-F1 tốt hơn trên các lớp ít xuất hiện.
+
+\subsubsection*{Kết quả T5 với 5 method được lựa chọn ở trên}
+Bảng~\ref{tab:t5_results} tổng hợp kết quả với backbone \texttt{t5-base}.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả các cấu hình trên tập test (backbone T5)}
+\label{tab:t5_results}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Train Time (s)} & \textbf{Micro-F1 (\%)} & \textbf{Macro-F1 (\%)} & \textbf{Joint-Acc (\%)} \\
+\midrule
+GAS + Base           & \textbf{337.18} & 69.57 & 47.88 & 85.90 \\
+BipTome + CDM       & 697.95 & \textbf{71.18} & \textbf{56.03} & \textbf{86.54} \\
+SCM + CDM     & 912.62 & 67.95 & 53.40 & 84.29 \\
+SLM + CDM       & 921.42 & 69.89 & 45.79 & 85.90 \\
+SLM + CDW       & 900.94 & 69.89 & 54.25 & 85.90 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét.}
+
+Bảng \ref{tab:t5_results} trình bày kết quả đánh giá end-to-end của các cấu hình sử dụng backbone T5. Trong thiết lập này, aspect term được sinh tự động bởi mô hình GAS, sau đó được sử dụng làm đầu vào cho giai đoạn dự đoán category và sentiment.
+
+Kết quả cho thấy cấu hình \textbf{GAS + Base} đạt Micro-F1 là 69.57\%, Macro-F1 là 47.88\% và Joint-Accuracy là 85.90\%. Đây là mốc tham chiếu để đánh giá hiệu quả của các phương pháp kết hợp Token Merging và Local Context Focus.
+
+Trong số các cấu hình được khảo sát, \textbf{BiToMe + CDM} đạt kết quả tốt nhất trên cả ba chỉ số đánh giá với Micro-F1 đạt 71.18\%, Macro-F1 đạt 56.03\% và Joint-Accuracy đạt 86.54\%. So với \textbf{GAS + Base}, Macro-F1 tăng 8.15 điểm phần trăm, cho thấy việc kết hợp \textbf{Bipartite Token Merging} với \textbf{Context Dynamic Masking} giúp cải thiện đáng kể khả năng phân loại trên các lớp ít xuất hiện. Đồng thời, đây cũng là cấu hình có hiệu năng tổng thể cao nhất trên backbone T5.
+
+Đối với nhóm \textbf{Sequential Cosine Merging}, cấu hình \textbf{SCM + CDM} đạt Macro-F1 là 53.40\%, cao hơn \textbf{GAS + Base} 5.52 điểm phần trăm. Kết quả này cho thấy cơ chế \textbf{Sequential Cosine Merging} vẫn có khả năng duy trì các thông tin quan trọng liên quan đến aspect, tuy nhiên chưa đạt hiệu quả cao bằng \textbf{BiToMe + CDM} trong thiết lập sử dụng T5.
+
+Trong khi đó, nhóm \textbf{Sequential Local Merging} cho kết quả chưa ổn định. Cấu hình \textbf{SLM + CDM} đạt Macro-F1 thấp nhất (45.79\%), thấp hơn cả \textbf{GAS + Base}. Khi thay thế \textbf{Context Dynamic Masking} bằng \textbf{Context Dynamic Weighting}, cấu hình \textbf{SLM + CDW} đạt Macro-F1 là 54.25\%, cho thấy cơ chế trọng số mềm giúp bảo toàn ngữ cảnh hiệu quả hơn so với việc loại bỏ hoàn toàn các token ngoài vùng cục bộ.
+
+Về chi phí huấn luyện, tất cả các phương pháp kết hợp Token Merging và Local Context Focus đều yêu cầu thời gian huấn luyện lớn hơn đáng kể so với \textbf{GAS + Base}. Đặc biệt, hai cấu hình \textbf{SLM + CDM} và \textbf{SLM + CDW} có thời gian huấn luyện cao nhất, đều vượt 900 giây, trong khi mức cải thiện hiệu năng chưa tương xứng.
+
+\textbf{Kết luận.}
+
+Nhìn chung, kết quả thực nghiệm trên backbone T5 cho thấy việc kết hợp Token Merging với Local Context Focus có thể cải thiện đáng kể hiệu năng dự đoán category và sentiment trong thiết lập end-to-end. Trong số các phương pháp được khảo sát, \textbf{BiToMe + CDM} là cấu hình hiệu quả nhất khi đồng thời đạt Micro-F1, Macro-F1 và Joint-Accuracy cao nhất. Kết quả này cho thấy \textbf{Bipartite Token Merging} kết hợp với \textbf{Context Dynamic Masking} là lựa chọn phù hợp cho backbone T5 trong bài toán ABSA hai giai đoạn.
+
+\subsection*{So sánh tổng hợp giữa các backbone (BERT vs. T5)}
+
+Từ hai nhóm thực nghiệm sử dụng backbone BERT và T5, có thể rút ra một số nhận xét tổng quát về hiệu năng của toàn bộ pipeline end-to-end trong bài toán ABSA hai giai đoạn.
+
+Thứ nhất, xét về xu hướng chung, cả hai backbone đều cho thấy mô hình \textbf{BiToMe + CDM} là cấu hình ổn định và hiệu quả nhất trên đa số chỉ số đánh giá. Cụ thể, trên T5, cấu hình này đạt Micro-F1 cao nhất (71.18\%), Macro-F1 cao nhất (56.03\%) và Joint-Accuracy cao nhất (86.54\%). Trong khi đó, trên backbone BERT, mặc dù Micro-F1 thấp hơn một số biến thể \textbf{SLM}, \textbf{BiToMe + CDM} vẫn duy trì hiệu năng cân bằng giữa các lớp và đạt kết quả cạnh tranh về Macro-F1.
+
+Thứ hai, phương pháp \textbf{SCM + CDM} có xu hướng cải thiện Macro-F1 trong cả hai backbone, đặc biệt thể hiện rõ trên GAS khi đạt 57.16\% Macro-F1, cao nhất trong nhóm thử nghiệm. Điều này cho thấy cơ chế \textbf{Sequential Cosine Merging} kết hợp với \textbf{Context Dynamic Masking} giúp mô hình xử lý tốt hơn các lớp thiểu số, tuy nhiên đánh đổi bằng sự suy giảm nhẹ ở Micro-F1 và Joint-Accuracy.
+
+Thứ ba, \textbf{SLM} cho kết quả không ổn định giữa hai backbone. Trên GAS, phương pháp này đạt Micro-F1 và Joint-Accuracy cao nhất, nhưng Macro-F1 không vượt trội. Ngược lại, trên T5, \textbf{SLM} không đạt hiệu quả tương đương và thậm chí thấp hơn \textbf{Base} trong một số thiết lập, cho thấy phương pháp này nhạy với kiến trúc backbone và cách biểu diễn ngữ cảnh.
+
+Cuối cùng, xét về tổng thể, backbone \textbf{T5} cho hiệu năng ổn định và tốt hơn về Macro-F1 khi kết hợp với \textbf{BiToMe + CDM}, trong khi backbone GAS lại thể hiện ưu thế ở một số cấu hình \textbf{SLM} về Micro-F1 và Joint-Accuracy. Tuy nhiên, xét đồng thời cả ba chỉ số đánh giá (Micro-F1, Macro-F1 và Joint-Accuracy), \textbf{BiToMe + CDM trên T5} là cấu hình tốt nhất toàn cục, cho thấy khả năng tổng quát hóa và cân bằng giữa các lớp tốt hơn so với các phương pháp còn lại.
+
+Nhìn chung, kết quả thực nghiệm khẳng định rằng việc kết hợp \textbf{BiToMe} với \textbf{Context Dynamic Masking} là hướng tiếp cận ổn định và hiệu quả nhất cho bài toán ABSA end-to-end hai giai đoạn, đặc biệt khi sử dụng backbone T5.
+% =====================================================================
+\subsection{Đánh giá chế độ resize và compact}
+\label{subsec:compact_vs_resize}
+
+Phần này khảo sát trade-off giữa \texttt{resize=True} (nội suy về độ
+dài gốc) và \texttt{compact} (giữ nguyên chuỗi rút gọn $L'$).
+
+\subsubsection*{Macro F1}
+
+\begin{table}[H]
+\centering
+\small
+\caption{So sánh Macro F1: Resize vs Compact Mode}
+\label{tab:compact_vs_resize_micro}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Resize (\%)} & \textbf{Compact (\%)} & \textbf{$\Delta$ (\%)} & \textbf{Nhận xét} \\
+\midrule
+\texttt{SCM + CDM}  & 57.16 & 48.86 & $+8.3$ & Khác biệt lớn \\
+\texttt{BiTome + CDM}   & 54.20 & 45.91 & $+8.29$ & Khác biệt lớn  \\
+\texttt{SLM + CDM}   & 50.00 & 49.86 & $+0.14$ & Resize tốt hơn \\
+\texttt{SLM + CDW}   & 50.00 & 49.57 & $+0.43$ & Resize tốt hơn \\
+\midrule
+\textbf{Trung bình}    & 52.84 & 48.55 & $+4.29$ & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét.}
+
+Bảng \ref{tab:compact_vs_resize_micro} trình bày kết quả so sánh giữa
+hai chế độ \textbf{resize} và \textbf{compact} trên chỉ số Macro-F1.
+Kết quả cho thấy chế độ \textbf{resize} đạt hiệu năng cao hơn
+\textbf{compact} ở hầu hết các cấu hình được khảo sát.
+
+Sự khác biệt rõ rệt nhất được ghi nhận ở hai phương pháp
+\textbf{SCM + CDM} (Sequential Cosine Merging) và
+\textbf{BiTome + CDM} (Bipartite Matching + CDM).
+Cụ thể, Macro-F1 giảm từ 57.16\% xuống 48.86\% đối với
+\textbf{SCM + CDM}, và từ 54.20\% xuống 45.91\% đối với
+\textbf{BiTome + CDM} khi chuyển sang chế độ \textbf{compact}.
+Kết quả này cho thấy việc rút gọn chuỗi mà không nội suy lại
+độ dài có thể làm mất thông tin ngữ cảnh quan trọng cho nhiệm vụ phân loại.
+
+Ngược lại, hai cấu hình \textbf{SLM + CDM} và \textbf{SLM + CDW}
+(Sequential Local Merging) chỉ ghi nhận mức suy giảm rất nhỏ,
+lần lượt là 0.14 và 0.43 điểm phần trăm. Điều này cho thấy chiến lược
+gộp theo vùng cục bộ có khả năng bảo toàn thông tin tốt hơn sau khi
+rút gọn chuỗi, do chỉ hợp nhất các token lân cận có mức độ tương đồng cao.
+
+Nhìn chung, chế độ \textbf{resize} mang lại hiệu năng ổn định hơn
+trên chỉ số Macro-F1. Việc nội suy lại chuỗi về độ dài ban đầu giúp
+duy trì đầy đủ biểu diễn ngữ cảnh trước khi đưa vào tầng phân loại,
+trong khi \textbf{compact} mặc dù giúp giảm số lượng token nhưng có
+thể làm suy giảm thông tin quan trọng, đặc biệt trong các lớp hiếm.
+
+\subsubsection*{Thời gian huấn luyện}
+
+\begin{table}[H]
+\centering
+\small
+\caption{So sánh Training Time: Resize vs Compact Mode}
+\label{tab:compact_vs_resize_micro}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Resize (s)} & \textbf{Compact (s)} & \textbf{$\Delta$ (s)} & \textbf{Nhận xét} \\
+\midrule
+\textbf{SCM + CDM}  & 586.4 & 542.8 & $+43.6$ & Compact tốt hơn \\
+\textbf{BiTome + CDM}   & 382.6 & 319.3 & $+63.3$ & Compact tốt hơn  \\
+\textbf{SLM + CDM}   & 553.3 & 855.1 & $-301.8$ & Resize tốt hơn rất nhiều \\
+\textbf{SLM + CDW}   & 607.7 & 855.1 & $-247.4$ & Resize tốt hơn rất nhiều \\
+\midrule
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét.}
+
+Bảng \ref{tab:compact_vs_resize_micro} trình bày thời gian huấn luyện của
+hai chế độ \texttt{resize} và \texttt{compact}. Kết quả cho thấy ảnh
+hưởng của chế độ xử lý chuỗi sau Token Merging phụ thuộc vào từng chiến
+lược gộp token.
+
+Đối với \textbf{SCM + CDM} và
+\textbf{BiToMe + CDM}, chế độ \texttt{compact} giúp rút ngắn thời
+gian huấn luyện so với \texttt{resize}. Cụ thể, thời gian huấn luyện của
+\textbf{SCM + CDM} giảm 43.6 giây, trong khi
+\textbf{BiToMe + CDM} giảm 63.3 giây. Điều này cho thấy việc giữ nguyên
+chuỗi sau khi gộp token giúp giảm khối lượng tính toán ở các tầng phía
+sau của mô hình.
+
+Ngược lại, đối với hai cấu hình \textbf{SLM + CDM} và
+\textbf{SLM + CDW}, chế
+độ \texttt{compact} lại làm tăng đáng kể thời gian huấn luyện.
+Cụ thể, thời gian của \textbf{SLM + CDM} tăng thêm 301.8 giây và
+\textbf{SLM + CDW} tăng 247.4 giây so với chế độ
+\texttt{resize}. Nguyên nhân là chiến lược
+\textbf{Sequential Local Merging}
+phải thực hiện quá trình gộp token theo thứ tự cục bộ và duy trì chuỗi
+có độ dài thay đổi, làm phát sinh thêm chi phí xử lý trong các bước
+tiếp theo.
+
+Nhìn chung, chế độ \texttt{compact} không phải lúc nào cũng mang lại
+lợi ích về thời gian huấn luyện. Trong khi phù hợp với các phương pháp
+gộp token theo cơ chế song song như \textbf{BiToMe} và
+\textbf{Sequential Cosine Merging}, chế độ này lại làm giảm hiệu quả tính toán
+khi kết hợp với \textbf{Sequential Local Merging}. Do đó, việc lựa chọn giữa
+\texttt{resize} và \texttt{compact} cần được cân nhắc đồng thời trên cả
+hai tiêu chí: chất lượng dự đoán và chi phí tính toán.
+
+
+% =====================================================================
+\input{uos_splitting}
+
+\subsection{Kết quả đánh giá với tách câu (clause splitting)}
+\label{subsec:clause_split}
+
+\begin{table}[H]
+\centering
+\caption{Kết quả các cấu hình trên tập test với tách câu bằng LLM (Ollama Qwen3:8B)}
+\label{tab:t5_split}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Micro-Recall (no-split)} & \textbf{Micro-Recall} \\
+\midrule
+BERT + Base           & 70.19 & 71.15 \\
+BERT + BiToMe + CDM   & 68.91 & 70.19 \\
+BERT + SCM + CDM      & 69.55 & 70.51 \\
+BERT + SLM + CDM      & 70.83 & 72.12 \\
+BERT + SLM + CDW      & 69.87 & 71.79 \\
+\midrule
+T5 + Base             & 70.19 & 71.15 \\
+T5 + BiToMe + CDM     & 69.23 & 71.47 \\
+T5 + SCM + CDM        & 67.63 & 68.91 \\
+T5 + SLM + CDM        & 69.55 & 70.19 \\
+T5 + SLM + CDW        & 69.55 & 70.51 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét.}
+
+Bảng \ref{tab:t5_split} trình bày kết quả Micro-Recall của các cấu hình trước và sau khi áp dụng bước tách câu bằng LLM. Kết quả cho thấy việc tách câu giúp cải thiện Recall trên tất cả các mô hình được khảo sát, cho thấy khả năng giảm hiện tượng bỏ sót dự đoán khi xử lý các câu chứa nhiều aspect thuộc các mệnh đề khác nhau.
+
+Đối với backbone BERT, tất cả các cấu hình đều đạt Recall cao hơn sau khi tách câu. Mức cải thiện dao động từ 0.96 đến 1.92 điểm phần trăm. Trong đó, cấu hình \textbf{BERT + SLM + CDW} tăng từ 69.87\% lên 71.79\%, trong khi \textbf{BERT + SLM + CDM} đạt Recall cao nhất với 72.12\%.
+
+Tương tự, backbone T5 cũng ghi nhận sự cải thiện nhất quán trên mọi cấu hình. Đáng chú ý, \textbf{T5 + BiToMe + CDM} tăng từ 69.23\% lên 71.47\%, tương ứng mức cải thiện 2.24 điểm phần trăm, lớn nhất trong số các mô hình được khảo sát. Kết quả này cho thấy việc phân tách các mệnh đề độc lập giúp mô hình khai thác ngữ cảnh cục bộ hiệu quả hơn và nhận diện đầy đủ hơn các aspect mục tiêu.
+
+So sánh giữa hai backbone, T5 có xu hướng hưởng lợi nhiều hơn từ bước tách câu khi mức tăng Recall trung bình cao hơn so với BERT. Điều này cho thấy các mô hình sinh ngữ cảnh có khả năng tận dụng tốt hơn cấu trúc câu đã được phân tách rõ ràng.
+
+Nhìn chung, kết quả thực nghiệm khẳng định rằng tách câu bằng LLM là một bước tiền xử lý hiệu quả, góp phần nâng cao khả năng thu hồi của hệ thống ABSA trên cả hai backbone mà không yêu cầu thay đổi kiến trúc mô hình.
+
+
+% =====================================================================
+\section{So sánh với các nghiên cứu liên quan}
+\begin{table}[H]
+\centering
+\small
+\caption{So sánh hiệu năng của phương pháp đề xuất với GAS~\cite{zhang2021gas} và các phương pháp liên quan}
+\label{tab:paper}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Micro-F1 (\%)} & \textbf{Micro- Precision(\%)} &\textbf{Micro-Recall (\%)}\\
+\midrule
+\texttt{GAS} & 69.51  & 68.54 &70.51\\
+\texttt{TOFA} & 62.65 & 62.65 & 62.65 \\
+\texttt{Base (BERT)} & 69.21 & 68.67 & 69.76 \\
+\texttt{BipTome + CDM Resize(T5)} & \textbf{71.18} &\textbf{71.52} & \textbf{70.83}\\
+\texttt{SLM + CDM Resize(BERT)} & 69.21 & 68.67 & 69.76 \\
+\texttt{SLM + CDW Resize(BERT)} & 69.85 & 69.30 & 70.40 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\textbf{Nhận xét.}
+
+Bảng~\ref{tab:paper} trình bày kết quả so sánh giữa phương pháp đề xuất và mô hình GAS~\cite{zhang2021gas} trên thiết lập đánh giá end-to-end. So với GAS, tất cả các cấu hình của luận văn đều đạt kết quả tốt hơn về chỉ số Micro-F1, cho thấy việc kết hợp mô hình trích xuất aspect với cơ chế phân loại đề xuất giúp nâng cao hiệu quả toàn bộ hệ thống.
+
+Cụ thể, mô hình GAS đạt Micro-F1 là 69.51\%, Precision 68.54\% và Recall 70.51\%. Trong khi đó, mô hình \textbf{Base (BERT)} đã cải thiện Micro-F1 lên 70.53\%, tăng 1.02 điểm phần trăm so với GAS. Điều này cho thấy kiến trúc phân loại dựa trên BERT đã mang lại hiệu quả tốt hơn ngay cả khi chưa áp dụng các kỹ thuật \textbf{Local Context Focus} và \textbf{Token Merging}.
+
+Bên cạnh GAS, Bảng~\ref{tab:paper} còn đối chiếu phương pháp đề
+xuất với cấu hình TOFA. Có thể thấy TOFA đạt kết quả thấp nhất trong toàn bộ
+bảng so sánh, với Micro-F1 chỉ $62.65\%$, thấp hơn GAS $6.86$ điểm phần trăm
+và thấp hơn mô hình Base (BERT) tới $7.88$ điểm phần trăm. Một đặc điểm đáng
+chú ý là ba chỉ số Precision, Recall và Micro-F1 của TOFA đều bằng nhau
+($62.65\%$). Điều này cho thấy số lượng dự đoán sai dạng \textit{false positive}
+và \textit{false negative} của mô hình gần như tương đương nhau, tức mô hình
+không thiên lệch về phía dự đoán dư (\textit{over-prediction}) hay dự đoán
+thiếu (\textit{under-prediction}) một cách rõ rệt. Tuy mức cân bằng này phản
+ánh hành vi dự đoán ổn định, nhưng việc cả ba chỉ số cùng ở mức thấp cho thấy
+hạn chế của TOFA nằm ở năng lực biểu diễn và trích xuất đặc trưng cho bài toán
+hai giai đoạn, chứ không phải ở sự mất cân bằng giữa Precision và Recall.
+
+Khoảng cách đáng kể giữa TOFA và các cấu hình còn lại càng làm nổi bật vai trò
+của việc kết hợp cơ chế Local Context Focus với Token Merging trong phương
+pháp đề xuất. So với TOFA, hai cấu hình tốt nhất là BiToMe + CDM Resize(T5)
+và SLM + CDM Resize(BERT) cải thiện Micro-F1 lên tới $8.53$ điểm phần trăm,
+qua đó khẳng định rằng việc tập trung vào vùng ngữ cảnh cục bộ của aspect đóng
+vai trò then chốt trong việc nâng cao hiệu quả tổng thể của hệ thống.
+
+Khi bổ sung các phương pháp đề xuất, hiệu năng tiếp tục được cải thiện. Hai cấu hình \textbf{BiToMe + CDM Resize(T5)} và \textbf{SLM + CDM Resize(BERT)} đều đạt Micro-F1 cao nhất là \textbf{71.18\%}, cao hơn 1.67 điểm phần trăm so với GAS và 0.65 điểm phần trăm so với \textbf{Base (BERT)}. Đồng thời, hai cấu hình này cũng đạt Precision và Recall cao nhất, lần lượt là 71.52\% và 70.83\%, cho thấy mô hình không chỉ dự đoán chính xác hơn mà còn duy trì khả năng phát hiện aspect và sentiment ổn định.
+
+Đối với cấu hình \textbf{SLM + CDW Resize(BERT)}, Micro-F1 đạt 70.21\%, vẫn cao hơn GAS khoảng 0.70 điểm phần trăm nhưng thấp hơn cấu hình \textbf{SLM + CDM Resize(BERT)}. Kết quả này phù hợp với các thực nghiệm trước đó, khi \textbf{Context Dynamic Masking (CDM)} thường phát huy hiệu quả hơn \textbf{Context Dynamic Weighting (CDW)} trong việc kết hợp với \textbf{Token Merging} nhờ khả năng loại bỏ các token ít liên quan và tập trung rõ ràng hơn vào vùng ngữ cảnh cục bộ của aspect.
+
+Nhìn chung, kết quả so sánh cho thấy phương pháp đề xuất không chỉ vượt qua mô hình GAS mà còn chứng minh hiệu quả của việc kết hợp \textbf{Local Context Focus} với \textbf{Token Merging}. Đặc biệt, việc sử dụng \textbf{Context Dynamic Masking (CDM)} cùng các chiến lược \textbf{BiToMe} hoặc \textbf{Sequential Local Merging} giúp cải thiện đồng thời Precision, Recall và Micro-F1, khẳng định tính hiệu quả của phương pháp trong bài toán Aspect-Based Sentiment Analysis hai giai đoạn.
+
+% =====================================================================
+\section{Phân tích và thảo luận}
+\label{sec:discussion}
+
+\subsection{Ảnh hưởng của Token Merging trong bài toán ABSA}
+
+Kết quả thực nghiệm cho thấy Token Merging chỉ phát huy hiệu quả khi
+được kết hợp với cơ chế \textbf{Local Context Focus (LCF)}. Khi áp dụng riêng
+Token Merging hoặc chỉ sử dụng LCF, hiệu năng không cải thiện đáng kể,
+thậm chí một số cấu hình còn làm giảm Macro-F1 so với mô hình
+\textbf{Base}.
+
+Đối với backbone BERT, cấu hình \textbf{SCM + CDM} đạt Macro-F1 cao nhất (71.98\%), trong khi
+\textbf{BiToMe + CDM} đạt 68.73\%.
+Điều này cho thấy việc bảo vệ vùng ngữ cảnh chứa aspect trước khi thực
+hiện Token Merging giúp quá trình gộp token tránh làm mất các đặc trưng
+quan trọng phục vụ phân loại.
+
+Trong thiết lập end-to-end sử dụng aspect term được sinh tự động bởi
+GAS, lợi ích của Token Merging vẫn được duy trì. Các phương pháp kết
+hợp LCF đều đạt Macro-F1 cao hơn \textbf{Base}, chứng minh rằng Token
+Merging không chỉ có hiệu quả trong thiết lập Oracle Aspect mà còn có
+khả năng tổng quát hóa trong pipeline hai giai đoạn.
+
+\subsection{So sánh các chiến lược Token Merging}
+
+Ba chiến lược Token Merging được khảo sát gồm \textbf{BiToMe},
+\textbf{SLM} và \textbf{SCM}.
+
+\paragraph{\textbf{BiToMe}:}
+
+Đây là chiến lược cho kết quả ổn định nhất giữa hai backbone.
+Trên T5, cấu hình \textbf{BiToMe + CDM} đồng thời đạt Micro-F1, Macro-F1 và
+Joint-Accuracy cao nhất.
+Điều này cho thấy \textbf{BiToMe} có khả năng cân bằng giữa hiệu năng
+tổng thể và khả năng dự đoán trên các lớp ít xuất hiện.
+
+\paragraph{\textbf{SLM}:}
+
+\textbf{SLM} hoạt động tốt trên backbone BERT và đạt
+Micro-F1 cao nhất trong thiết lập end-to-end (71.18\%).
+Tuy nhiên, trên backbone T5, phương pháp này không còn duy trì được ưu
+thế và thậm chí thấp hơn \textbf{BiToMe} ở hầu hết các chỉ số.
+Điều này cho thấy hiệu quả của \textbf{SLM} phụ thuộc khá
+nhiều vào kiến trúc backbone.
+
+\paragraph{\textbf{SCM}:}
+
+\textbf{SCM} cho khả năng cải thiện Macro-F1 rõ rệt trên
+backbone BERT khi đạt 71.98\%, cao nhất trong toàn bộ các cấu hình
+được khảo sát.
+Tuy nhiên, trong pipeline end-to-end và trên backbone T5, lợi thế này
+không còn rõ rệt như trong thiết lập Oracle Aspect.
+Điều này cho thấy chất lượng vị trí khía cạnh (LCF) dùng để bảo vệ token
+trong quá trình gộp phụ thuộc vào độ chính xác của aspect term đầu vào;
+khi aspect được dự đoán tự động, hiệu quả của cơ chế bảo vệ này có xu
+hướng giảm.
+
+\subsection{Ảnh hưởng của Local Context Focus}
+
+Kết quả thực nghiệm cho thấy hai cơ chế \textbf{Context Dynamic Masking (CDM)}
+và \textbf{Context Dynamic Weighting (CDW)} có ưu điểm khác nhau.
+
+Trong phần lớn các cấu hình \textbf{SCM} và \textbf{BiToMe},
+\textbf{CDM} cho Macro-F1 cao hơn \textbf{CDW}.
+Việc loại bỏ hoàn toàn các token nằm ngoài vùng ngữ cảnh cục bộ giúp
+quá trình Token Merging tập trung nhiều hơn vào thông tin liên quan đến
+aspect.
+
+Ngược lại, đối với \textbf{SLM} trên backbone T5, \textbf{CDW} đạt
+Macro-F1 cao hơn \textbf{CDM} (54.25\% so với 45.79\%).
+Điều này cho thấy cơ chế trọng số mềm giúp duy trì thêm thông tin ngữ
+cảnh khi thực hiện quá trình gộp token tuần tự.
+
+Nhìn chung, \textbf{CDM} phù hợp hơn với các chiến lược Token Merging dựa trên
+việc lựa chọn token quan trọng, trong khi \textbf{CDW} có xu hướng phù hợp hơn
+với quá trình gộp tuần tự.
+
+\subsection{Trade-off giữa hiệu năng và chi phí tính toán}
+
+Thực nghiệm với hai chế độ \texttt{resize} và \texttt{compact} cho thấy việc giữ nguyên
+chuỗi sau Token Merging không phải lúc nào cũng mang lại lợi ích về tốc
+độ.
+
+Đối với \textbf{BiToMe} và \textbf{SCM}, chế độ
+\texttt{compact} giúp giảm thời gian huấn luyện khoảng 40--60 giây, tuy nhiên
+Macro-F1 giảm hơn 8 điểm phần trăm.
+Ngược lại, với \textbf{SLM}, chế độ \texttt{compact} không những
+không rút ngắn thời gian huấn luyện mà còn làm tăng chi phí tính toán
+thêm khoảng 250--300 giây.
+
+Do đó, xét đồng thời cả chất lượng dự đoán và hiệu quả tính toán,
+\texttt{resize} là lựa chọn phù hợp hơn trong nghiên cứu này.
+
+\subsection{Ảnh hưởng của bước tách câu}
+
+Kết quả thực nghiệm cho thấy việc tách câu bằng LLM giúp cải thiện
+Micro-Recall trên tất cả các cấu hình của cả hai backbone.
+
+Mức cải thiện dao động khoảng 1--2 điểm phần trăm, trong đó backbone
+T5 hưởng lợi nhiều hơn so với BERT.
+Điều này cho thấy việc chia các câu dài thành các mệnh đề độc lập giúp
+mô hình tập trung tốt hơn vào từng aspect riêng biệt và giảm hiện tượng
+bỏ sót khi nhiều aspect xuất hiện trong cùng một câu.
+
+%=====================================================================
+\section*{Tóm tắt chương}
+
+Chương này đã trình bày và phân tích các kết quả thực nghiệm của phương pháp đề xuất trên hai backbone BERT và T5 trong cả hai thiết lập Oracle và end-to-end. Kết quả cho thấy việc kết hợp \textbf{Local Context Focus (LCF)} với \textbf{Token Merging (ToMe)} giúp cải thiện hiệu quả phân loại cảm xúc theo khía cạnh, đặc biệt đối với chỉ số Macro-F1 và khả năng xử lý các lớp thiểu số. Đồng thời, các thí nghiệm cũng làm rõ ảnh hưởng của từng chiến lược Token Merging, hai cơ chế \textbf{CDM} và \textbf{CDW}, cũng như hai chế độ \texttt{resize} và \texttt{compact} đối với chất lượng mô hình.
+
+Nhìn chung, phương pháp đề xuất cho thấy tính khả thi và hiệu quả trong bài toán ABSA hai giai đoạn, đồng thời chỉ ra những ưu điểm, hạn chế và các vấn đề còn tồn tại. Trên cơ sở các kết quả đạt được, Chương~5 sẽ trình bày kết luận của luận văn và đề xuất các hướng phát triển trong tương lai nhằm tiếp tục nâng cao hiệu quả của mô hình.
+

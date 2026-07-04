@@ -7,7 +7,7 @@ Usage (from repo root):
     pip install matplotlib pandas seaborn
     python scripts/generate_thesis_figures.py
 
-Output: figures/*.pdf (and .png)
+Output: thesis/figures/*.pdf (and .png)
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import pandas as pd
 import seaborn as sns
 
 ROOT = Path(__file__).resolve().parents[1]
-FIG_DIR = ROOT / "figures"
+FIG_DIR = ROOT / "thesis" / "figures"
 RUNS = ROOT / "runs_ate"
 DATASET = ROOT / "dataset"
 
@@ -211,7 +211,7 @@ def fig_pipeline_architecture():
 def fig_tome_strategies():
     """Sơ đồ minh họa ba chiến lược gộp token (Step 3 Chapter 3)."""
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
-    titles = ["Bipartite\n(ToMe CVPR 2023)", "Sequential Local", "Attention-Weighted"]
+    titles = ["Bipartite\n(ToMe CVPR 2023)", "Sequential Local", "Sequential Cosine (SCM)"]
     descs = [
         "Pool: loại CLS, SEP, aspect\n"
         "Chia xen kẽ A = {p0,p2,...}, B = {p1,p3,...}\n"
@@ -221,10 +221,10 @@ def fig_tome_strategies():
         "Tại token i: tính sim_left, sim_right\n"
         "sim_left > sim_right → i gập vào trái\n"
         "Giữ ranh giới LCF (mid_sep không gộp)",
-        "Xếp hạng token theo attention ↑\n"
-        "Gộp token attention thấp nhất trước\n"
-        "Bảo vệ: CLS, SEP, aspect, top-25% attn\n"
-        "Merge: x_j ← (x_j + x_i) / 2",
+        "Quét trái → phải theo vị trí\n"
+        "Chọn token trái nhất chưa bị bảo vệ\n"
+        "Bảo vệ: CLS, SEP, aspect\n"
+        "Gộp với hàng xóm cosine cao nhất (toàn chuỗi)",
     ]
     colors = ["#E8F0FE", "#FFF3CD", "#D4EDDA"]
     borders = ["#1F4E79", "#856404", "#155724"]

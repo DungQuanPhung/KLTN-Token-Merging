@@ -1,0 +1,104 @@
+\chapter{I. GIỚI THIỆU TỔNG QUAN}
+\section{1.1. Giới thiệu}
+
+Sự phát triển mạnh mẽ của các nền tảng đặt phòng trực tuyến và mạng xã hội du lịch đã làm gia tăng đáng kể số lượng cũng như mức độ chi tiết của các đánh giá (review) do khách hàng để lại cho các cơ sở lưu trú. Một đánh giá thường đồng thời đề cập đến nhiều khía cạnh khác nhau của dịch vụ với các sắc thái cảm xúc không giống nhau. Chẳng hạn, câu \textit{``The room was beautiful but the staff was rude''} thể hiện cảm xúc tích cực đối với khía cạnh \textit{phòng} (\texttt{FACILITY}) nhưng lại mang cảm xúc tiêu cực đối với khía cạnh \textit{nhân viên} (\texttt{SERVICE}). Tuy nhiên, các phương pháp phân tích cảm xúc truyền thống thường chỉ gán một nhãn cảm xúc duy nhất cho toàn bộ câu hoặc đoạn văn, do đó không phản ánh được những cảm xúc trái ngược cùng tồn tại trong một nhận xét. Điều này khiến doanh nghiệp gặp khó khăn trong việc xác định chính xác các điểm mạnh và hạn chế của dịch vụ để có những điều chỉnh phù hợp.
+
+Để giải quyết hạn chế trên, bài toán phân tích cảm xúc theo khía cạnh (\textit{Aspect-Based Sentiment Analysis} -- ABSA) đã được đề xuất và trở thành một hướng nghiên cứu quan trọng trong lĩnh vực xử lý ngôn ngữ tự nhiên. Mục tiêu của ABSA là xác định cảm xúc tương ứng với từng khía cạnh cụ thể được đề cập trong văn bản thay vì chỉ đánh giá cảm xúc ở mức toàn câu. Hai bài toán con phổ biến của ABSA bao gồm: (1) \textit{Aspect Term Extraction} (ATE), có nhiệm vụ trích xuất các cụm từ biểu diễn khía cạnh xuất hiện trong câu; và (2) \textit{Aspect (Category) Polarity Classification} (APC), thực hiện phân loại nhóm khía cạnh và xác định cảm xúc tương ứng (tích cực, tiêu cực hoặc trung lập) cho từng khía cạnh đó. Trong bối cảnh các mô hình ngôn ngữ tiền huấn luyện phát triển mạnh mẽ, kiến trúc Transformer, đặc biệt là BERT \cite{devlin2019bert}, đã mang lại những cải thiện đáng kể về hiệu quả của các hệ thống ABSA. Trên cơ sở đó, cơ chế \textit{Local Context Focus} (LCF) được đề xuất bởi Zeng và cộng sự \cite{zeng2019lcf} nhằm tăng cường khả năng tập trung vào vùng ngữ cảnh xung quanh khía cạnh đang xét. Kết hợp với các nghiên cứu khai thác BERT cho ABSA của Li và cộng sự \cite{li2019exploiting}, kiến trúc \textit{FAST-LCF-BERT} đã chứng minh khả năng nâng cao độ chính xác phân loại cảm xúc nhờ tận dụng đồng thời thông tin ngữ cảnh toàn cục và thông tin cục bộ liên quan trực tiếp đến khía cạnh.
+
+Trong đề tài này, bài toán ATE không được giải quyết theo hướng gán nhãn chuỗi truyền thống sử dụng sơ đồ BIO, mà được hình thức hóa thành bài toán sinh có điều kiện (\textit{conditional generation}) dựa trên mô hình ngôn ngữ T5. Cụ thể, mô hình \texttt{T5AspectExtractor}, được xây dựng trên nền tảng \texttt{T5ForConditionalGeneration} với backbone \texttt{t5-base}, nhận đầu vào là câu đánh giá và sinh trực tiếp danh sách các cụm từ khía cạnh dưới dạng chuỗi có cấu trúc theo định dạng GAS (\textit{Generative Aspect-based Sentiment}). Ví dụ, đầu ra của mô hình có thể là \texttt{"(room); (staff); (elevator)"}; trong trường hợp câu không chứa khía cạnh, mô hình sinh ra chuỗi \texttt{"none"}. So với phương pháp gán nhãn token truyền thống, cách tiếp cận sinh này giúp loại bỏ nhu cầu thiết kế nhãn thủ công và linh hoạt hơn trong việc xử lý các câu chứa nhiều khía cạnh với số lượng không cố định. Tuy nhiên, do đặc trưng của các mô hình sinh, đầu ra có thể không khớp hoàn toàn với văn bản gốc do lỗi chính tả hoặc hiện tượng thiếu, thừa từ. Để khắc phục vấn đề này, đầu ra của T5 được hậu xử lý bằng kỹ thuật đối sánh n-gram dựa trên khoảng cách Levenshtein. Theo đó, mỗi cụm từ được sinh ra sẽ được ánh xạ tới n-gram gần nhất thực sự xuất hiện trong câu, bảo đảm rằng các khía cạnh cuối cùng luôn là các chuỗi con hợp lệ của văn bản đầu vào.
+
+Dựa trên module ATE nói trên, đề tài khảo sát hai kiến trúc ABSA đầu-cuối nhằm trích xuất bộ ba thông tin gồm \textit{(cụm từ khía cạnh, nhóm khía cạnh, cảm xúc)}. Kiến trúc thứ nhất là kiến trúc \textbf{Joint}, trong đó hai bài toán ATE và APC được huấn luyện và đánh giá đồng thời trong cùng một quy trình. Cách tiếp cận này cho phép tận dụng mối liên hệ giữa hai nhiệm vụ, đồng thời hạn chế hiện tượng lan truyền lỗi giữa các giai đoạn xử lý. Kiến trúc thứ hai là kiến trúc \textbf{Pipeline}, trong đó mô hình T5 thực hiện trích xuất khía cạnh trước, sau đó các cụm từ khía cạnh thu được được chuyển sang module APC dựa trên FAST-LCF-BERT để phân loại nhóm khía cạnh và cảm xúc một cách độc lập. Mặc dù kiến trúc Pipeline mang lại tính linh hoạt cao do cho phép thay thế hoặc cải tiến riêng từng thành phần, kết quả thực nghiệm cho thấy độ chính xác của ATE suy giảm đáng kể so với kiến trúc Joint. Cụ thể, chỉ số F1 của ATE trong kiến trúc Pipeline chỉ đạt khoảng 60\%, thấp hơn đáng kể so với mức 79,87\% của kiến trúc Joint. Kết quả này phản ánh rõ ảnh hưởng của hiện tượng lan truyền lỗi khi quá trình trích xuất khía cạnh và phân loại cảm xúc được tách rời thành hai giai đoạn độc lập.
+
+Bên cạnh những cải thiện về độ chính xác, các mô hình dựa trên Transformer cũng đi kèm với chi phí tính toán đáng kể do cơ chế tự chú ý (\textit{self-attention}) có độ phức tạp bậc hai theo độ dài chuỗi đầu vào, tức $O(L^2)$ với $L$ là số lượng token. Khi độ dài chuỗi tăng lên, số lượng phép tính cần thực hiện trong các lớp attention tăng rất nhanh, kéo theo thời gian suy luận và nhu cầu tài nguyên phần cứng lớn hơn. Trong bối cảnh triển khai thực tế, chẳng hạn như các hệ thống chăm sóc khách hàng cần xử lý số lượng lớn phản hồi theo thời gian gần thực, chi phí tính toán này trở thành một thách thức đáng kể. Vấn đề càng trở nên nghiêm trọng khi mô hình được huấn luyện theo hướng đa nhiệm, đồng thời dự đoán nhóm khía cạnh và cảm xúc trên các câu dài chứa nhiều thông tin dư thừa như từ dừng, dấu câu hoặc các token mang ý nghĩa tương tự nhau.
+
+Một hướng tiếp cận gần đây nhằm giảm chi phí suy luận của Transformer là phương pháp \textit{Token Merging} (ToMe) \cite{bolya2023tome}. Ban đầu được đề xuất cho Vision Transformer, ToMe dựa trên ý tưởng gộp các token có biểu diễn tương đồng thành một token đại diện thông qua độ tương đồng cosine giữa các vector embedding. Nhờ đó, số lượng token được giảm dần qua các lớp xử lý mà không cần huấn luyện lại mô hình từ đầu, giúp cải thiện đáng kể tốc độ suy luận. Ý tưởng này mở ra khả năng áp dụng cho các mô hình ABSA nhằm giảm chi phí tính toán trong các lớp xử lý phía sau của FAST-LCF-BERT. Tuy nhiên, việc áp dụng trực tiếp chiến lược ghép cặp hai phía (\textit{bipartite matching}) của ToMe cho bài toán ABSA tiềm ẩn nguy cơ làm mất đi thông tin ngữ nghĩa quan trọng. Đặc biệt, các token thuộc cụm từ khía cạnh, vốn được nhấn mạnh bởi cơ chế LCF, có thể bị gộp với các token khác chỉ dựa trên độ tương đồng biểu diễn mà không xét đến vai trò của chúng trong việc xác định cảm xúc. Điều này có thể làm suy giảm chất lượng biểu diễn cục bộ và ảnh hưởng tiêu cực đến độ chính xác của mô hình.
+
+Từ những phân tích trên có thể thấy rằng, mặc dù Token Merging đã chứng minh hiệu quả trong việc giảm chi phí tính toán của Transformer, các nghiên cứu hiện nay chủ yếu tập trung vào chiến lược ghép cặp hai phía ban đầu và chưa xem xét đầy đủ sự tương tác giữa quá trình gộp token với cơ chế \textit{Local Context Focus} trong các mô hình ABSA đa nhiệm. Bên cạnh đó, vẫn còn thiếu các nghiên cứu đánh giá một cách hệ thống nhiều chiến lược gộp token khác nhau, chẳng hạn như các phương pháp dựa trên quan hệ lân cận tuần tự hoặc dựa trên trọng số chú ý, trong bối cảnh đồng thời dự đoán nhóm khía cạnh và cảm xúc. Khoảng trống nghiên cứu này chính là động lực để thực hiện đề tài \textit{``Attention-based Token Merging Aspect-Based Sentiment Analysis''}. Mục tiêu của đề tài là xây dựng và đánh giá thực nghiệm các chiến lược gộp token mới trong sự kết hợp với cơ chế LCF trên bộ dữ liệu đánh giá khách sạn thực tế, từ đó tìm kiếm sự cân bằng hợp lý giữa hiệu quả tính toán và độ chính xác của mô hình, góp phần nâng cao khả năng ứng dụng của các hệ thống ABSA trong thực tiễn.
+
+\section{1.2. Mục tiêu}
+ 
+Đề tài hướng đến các mục tiêu cụ thể sau:
+
+\begin{enumerate}
+
+    \item Xây dựng hệ thống ABSA đầu-cuối (\textit{end-to-end Aspect-Based Sentiment Analysis}) bao gồm hai bài toán con:
+    \begin{itemize}
+        \item \textit{Aspect Term Extraction} (ATE): trích xuất các cụm từ khía cạnh xuất hiện trong câu đánh giá bằng mô hình sinh có điều kiện dựa trên T5.
+        \item \textit{Aspect (Category) Polarity Classification} (APC): xác định đồng thời nhóm khía cạnh và cảm xúc tương ứng với từng cụm từ khía cạnh được trích xuất.
+    \end{itemize}
+
+    \item Xây dựng mô hình APC đa nhiệm (\textit{multi-task}) dựa trên kiến trúc FAST-LCF-BERT, đồng thời dự đoán:
+    \begin{itemize}
+        \item cảm xúc gồm ba lớp: \textit{positive}, \textit{negative} và \textit{neutral};
+        \item nhóm khía cạnh gồm sáu lớp: \texttt{SERVICE}, \texttt{FACILITY}, \texttt{AMENITY}, \texttt{EXPERIENCE}, \texttt{BRANDING} và \texttt{LOYALTY}.
+    \end{itemize}
+
+    \item Tích hợp mô-đun \textit{Token Merging} vào đầu ra của BERT, cho phép cấu hình bật/tắt độc lập với cơ chế \textit{Local Context Focus} (LCF), đồng thời hỗ trợ lựa chọn giữ nguyên độ dài chuỗi sau khi gộp (\textit{resize}) nhằm đánh giá chính xác tác động của việc giảm số lượng token đến hiệu năng tính toán và tốc độ suy luận.
+
+    \item Đề xuất và triển khai hai chiến lược gộp token mới bên cạnh chiến lược ghép cặp \textit{bipartite matching} của ToMe:
+    \begin{itemize}
+        \item \textbf{Sequential Local Merging}: thực hiện so sánh độ tương đồng của mỗi token với hai token lân cận (trái/phải) theo thứ tự tuần tự và gộp dần qua từng vòng quét.
+        
+        \item \textbf{Sequential Cosine Merging (SCM)}: duyệt tuần tự chuỗi token theo vị trí từ trái sang phải, tại mỗi bước chọn token trái nhất chưa được bảo vệ và gộp với token có độ tương đồng cosine cao nhất trong toàn chuỗi, đồng thời bảo vệ các token thuộc vị trí khía cạnh (được đánh dấu bởi LCF) nhằm hạn chế mất mát thông tin ngữ nghĩa quan trọng.
+    \end{itemize}
+
+\item Thiết kế và thực hiện bộ thực nghiệm có kiểm soát với 12 cấu hình khác nhau, kết hợp các yếu tố:
+\begin{itemize}
+    \item Ba cấu hình của cơ chế LCF: không sử dụng LCF, sử dụng \textit{Context Dynamic Masking} (CDM) hoặc sử dụng \textit{Context Dynamic Weighting} (CDW);
+    
+    \item Có hoặc không sử dụng Token Merging;
+    
+    \item Ba chiến lược gộp token khác nhau, bao gồm \textit{bipartite matching}, \textit{Sequential Local Merging} và \textit{Sequential Cosine Merging}.
+\end{itemize}
+Qua đó, đánh giá ảnh hưởng riêng lẻ cũng như sự tương tác giữa các yếu tố trên đối với hiệu năng của mô hình thông qua các chỉ số thời gian huấn luyện, thời gian suy luận, Macro-F1 và Micro-F1 cho cả hai đầu ra là cảm xúc và nhóm khía cạnh.
+
+    \item Xây dựng và xử lý bộ dữ liệu ABSA tiếng Anh từ các đánh giá khách sạn thực tế, kết hợp kỹ thuật tăng cường dữ liệu (\textit{data augmentation}) với dữ liệu SemEval Restaurant nhằm giảm thiểu vấn đề mất cân bằng lớp, đặc biệt đối với các lớp cảm xúc \textit{negative} và \textit{neutral} vốn chiếm tỷ lệ nhỏ trong dữ liệu gốc.
+
+    \item Xây dựng quy trình suy luận hoàn chỉnh cho hệ thống ABSA đầu-cuối. Cụ thể, các câu đánh giá dài được tách thành các mệnh đề (\textit{clause}) tương ứng với từng khía cạnh bằng mô hình ngôn ngữ lớn Qwen3:8B, sau đó các cụm từ khía cạnh được trích xuất bằng mô hình T5 và được đưa vào mô hình APC dựa trên FAST-LCF-BERT để thu được bộ ba thông tin \textit{(aspect term, aspect category, sentiment)} phục vụ cho các ứng dụng phân tích phản hồi khách hàng trong thực tế.
+
+\end{enumerate}
+
+\section{1.3. Câu hỏi nghiên cứu}
+
+Từ khoảng trống nghiên cứu đã được trình bày, luận văn tập trung trả lời các câu hỏi nghiên cứu sau:
+
+\begin{itemize}
+    \item \textbf{RQ1}: Việc áp dụng Token Merging vào kiến trúc FAST-LCF-BERT có giúp giảm chi phí tính toán và thời gian suy luận mà vẫn duy trì được hiệu năng của bài toán ABSA đa nhiệm hay không?
+
+    \item \textbf{RQ2}: Các chiến lược gộp token khác nhau (\textit{Bipartite Matching}, \textit{Sequential Local Merging} và \textit{Sequential Cosine Merging}) ảnh hưởng như thế nào đến độ chính xác của mô hình trên hai nhiệm vụ dự đoán cảm xúc và nhóm khía cạnh?
+
+    \item \textbf{RQ3}: Sự kết hợp giữa cơ chế Local Context Focus (CDM hoặc CDW) và Token Merging tác động như thế nào đến khả năng bảo toàn thông tin cục bộ liên quan đến khía cạnh?
+
+    \item \textbf{RQ4}: Chiến lược \textit{Sequential Cosine Merging} có đạt được sự cân bằng tốt hơn giữa hiệu năng tính toán và độ chính xác so với chiến lược ToMe gốc hay không?
+\end{itemize}
+
+\section{1.4. Đối tượng và phạm vi nghiên cứu}
+ 
+\subsection{1.4.1. Đối tượng nghiên cứu}
+ 
+Đối tượng nghiên cứu của đề tài bao gồm:
+ 
+\begin{itemize}
+  \item Văn bản đánh giá (review) của khách hàng đối với dịch vụ khách sạn, viết bằng tiếng Anh lẫn tiếng Việt, được gán nhãn theo định dạng \textit{aspect term, aspect category, sentiment}.
+  \item Kiến trúc mô hình FAST-LCF-BERT và cơ chế Local Context Focus (LCF) áp dụng cho bài toán phân loại \textit{aspect category, sentiment} theo \textit{aspect term}.
+  \item Kỹ thuật Token Merging (ToMe) và các chiến lược lựa chọn cặp token để gộp dựa trên \textit{cosine similarity} và/hoặc vị trí token trong chuỗi.
+\end{itemize}
+ 
+\subsection{1.4.2. Phạm vi nghiên cứu}
+
+Luận văn tập trung nghiên cứu bài toán phân tích cảm xúc theo khía cạnh trên miền đánh giá khách sạn bằng tiếng Anh. Trong đó:
+
+\begin{itemize}
+    \item Bài toán ATE được xây dựng theo hướng sinh có điều kiện sử dụng mô hình T5-base.
+    
+    \item Bài toán APC được xây dựng trên kiến trúc FAST-LCF-BERT đa nhiệm, đồng thời dự đoán nhóm khía cạnh và cảm xúc.
+    
+    \item Các thực nghiệm chỉ khảo sát ba chiến lược Token Merging gồm \textit{Bipartite Matching}, \textit{Sequential Local Merging} và \textit{Sequential Cosine Merging}.
+    
+    \item Cơ chế Local Context Focus được xem xét với hai biến thể CDM và CDW.
+    
+    \item Bộ dữ liệu sử dụng thuộc miền khách sạn với sáu nhóm khía cạnh và ba nhãn cảm xúc.
+\end{itemize}
+
+Luận văn không xem xét các mô hình ngôn ngữ lớn có kích thước lớn hơn BERT, không khảo sát các phương pháp nén mô hình khác như pruning hoặc quantization, cũng như chưa mở rộng sang các miền dữ liệu khác ngoài lĩnh vực khách sạn.
+ 

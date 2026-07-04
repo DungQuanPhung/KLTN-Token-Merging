@@ -20,6 +20,8 @@ Ngoài ra, hệ thống bao gồm:
 - **UOS** (Unit Opinion Sentence): tách câu bằng LLM để thu hẹp ngữ cảnh cho APC
 - **Web Interface**: FastAPI backend + React frontend cho demo tương tác
 
+Toàn bộ nội dung luận văn (LaTeX) nằm ở [`thesis/`](thesis/README.md), tách biệt khỏi phần code ở đây.
+
 ---
 
 ## Cấu trúc thư mục
@@ -42,12 +44,13 @@ thesis_apc_baseline/
 ├── experiments/                    # Scripts huấn luyện và đánh giá APC
 │   ├── run_joint_experiments.py    # Chạy tuần tự 12 cấu hình thực nghiệm
 │   ├── eval_joint_triplet.py       # Đánh giá bộ ba (aspect, category, sentiment)
+│   ├── eval_joint_select.py        # Đánh giá một danh sách folder cụ thể
 │   ├── run_ate_inference.py        # Infer ATE trên tập test → CSV
 │   └── eval_results.py             # Đánh giá ATE F1 (standalone)
 │
 ├── gas/                            # GAS — Generative Aspect Sentiment (1 bước)
 │   ├── model.py                    # GasT5Model: T5 sinh bộ ba trực tiếp
-│   ├── train_gas.py, trainer.py, dataset.py, metrics.py, infer.py
+│   └── train_gas.py, trainer.py, dataset.py, metrics.py, infer.py
 │
 ├── uos/                            # UOS — Unit Opinion Sentence (tách câu LLM)
 │   ├── segmenter.py                # OllamaUOSSegmenter (Qwen 8B via Ollama)
@@ -57,7 +60,7 @@ thesis_apc_baseline/
 │   └── README.md
 │
 ├── token_merging/                  # ToMe — Token Merging
-│   ├── tome_1d.py                  # bipartite / sequential_local / attention_weighted
+│   ├── tome_1d.py                  # bipartite / sequential_local / sequential_cosine (SCM)
 │   └── __init__.py
 │
 ├── dataset/                        # Dữ liệu đánh giá khách sạn tiếng Việt
@@ -70,35 +73,52 @@ thesis_apc_baseline/
 │       └── neutral.tsv             # Dữ liệu bổ sung cân bằng nhãn trung tính
 │
 ├── checkpoints/
-│   └── gas_t5_ate/best/            # Checkpoint T5 ATE tốt nhất (~891 MB)
-│       ├── model.safetensors
-│       ├── config.json, generation_config.json
-│       └── tokenizer.json, tokenizer_config.json
+│   └── gas_t5_ate/best/            # Checkpoint T5 ATE tốt nhất (~891 MB, gitignored)
 │
-├── checkpoints_gas/                # Checkpoint GAS T5 (joint generation)
+├── checkpoints_gas/                # Checkpoint GAS T5 (joint generation, gitignored)
 │
-├── runs_joint/                     # Output APC — mỗi config 1 thư mục con
+├── runs_joint/                     # Output APC — mỗi config 1 thư mục con (gitignored)
 │   └── <config_name>/
 │       ├── best_model.pt           # Checkpoint tốt nhất (theo dev joint F1)
 │       └── meta.json               # Labels, flags, best_dev_f1, best_epoch
 │
-├── runs_ate/                       # Kết quả đánh giá
+├── runs_ate/                       # Kết quả đánh giá (CSV, tracked)
 │   ├── test_ate_predictions.csv
 │   ├── eval_joint_triplet_BERT.csv
 │   ├── eval_joint_triplet_T5.csv
 │   ├── eval_results_BERT.csv
 │   └── eval_results_T5.csv
 │
+├── Bert/, T5/                      # Checkpoint lưu trữ các sweep cũ hơn (gitignored, rất lớn)
+│
 ├── server/
 │   └── app.py                      # FastAPI backend (REST API)
 │
 ├── frontend/                       # React + Vite frontend
+│
+├── scripts/
+│   ├── generate_thesis_figures.py  # Sinh hình cho luận văn → thesis/figures/
+│   ├── visualize_scm.py            # Minh hoạ từng bước thuật toán SCM
+│   └── visualize_scm_example.py    # Minh hoạ SCM trên câu ví dụ cụ thể
+│
+├── notebooks/                      # Notebook thăm dò/so sánh (không nằm trong pipeline chính)
+│   ├── gas_paper.ipynb
+│   └── train_ate.ipynb
+│
+├── docs/                           # Tài liệu tham khảo, PDF luận văn đã biên dịch
+│
+├── thesis/                         # Toàn bộ LaTeX của luận văn (xem thesis/README.md)
+│   ├── main.tex, mo_dau.tex, co_so_ly_thuyet.tex, ...
+│   ├── references.bib
+│   └── figures/
 │
 ├── pipeline_inference.py           # PipelineInference: ATE → Clause Split → APC
 ├── infer_aspect_term.py            # CLI infer APC cho một aspect term cụ thể
 ├── dataset_utils.py                # ApcFileDataset: parser .apc + supplement
 ├── ate_dataset_utils.py            # ATEDataset: parser .apc cho T5
 ├── clause_splitting.py             # Tách câu: none / rulebase / uos
+├── run_multiseed.py                # Huấn luyện nhiều seed, tổng hợp bảng cho luận văn
+├── run_multiseed_ate.py            # Tương tự, cho module ATE
 └── requirements.txt
 ```
 
@@ -209,7 +229,9 @@ Gộp token dư thừa để giảm độ phức tạp tính toán (CVPR 2023):
 |---|---|
 | `bipartite` | Ghép cặp token theo nhóm chẵn/lẻ (phương pháp gốc) |
 | `sequential_local` | Gộp hàng xóm trái–phải theo thứ tự |
-| `attention_weighted` | Bảo vệ token aspect, gộp token ít attention nhất |
+| `sequential_cosine` (SCM) | Duyệt trái → phải, chọn token trái nhất chưa bảo vệ và gộp với hàng xóm có cosine similarity cao nhất trong toàn chuỗi; bảo vệ token aspect (LCF) và CLS/SEP |
+
+> Chiến lược `sequential_cosine` trước đây được gọi là `attention_weighted`/AWM. Tên cũ gây hiểu nhầm: cài đặt thực tế không dùng attention score từ BERT (chỉ dùng vị trí + cosine similarity), nên đã đổi tên cho khớp với hành vi thật (xem `token_merging/tome_1d.py`).
 
 Khi `tome_resize=True`: nội suy khôi phục độ dài chuỗi ban đầu sau khi gộp.
 
@@ -268,7 +290,7 @@ python src/train.py \
   --seed 42
 ```
 
-Checkpoint tốt nhất (theo dev F1) → `checkpoints/gas_t5_ate/best/`  
+Checkpoint tốt nhất (theo dev F1) → `checkpoints/gas_t5_ate/best/`
 Checkpoint cuối cùng → `checkpoints/gas_t5_ate/last/`
 
 **Các tham số CLI:**
@@ -315,13 +337,13 @@ Script chạy tuần tự **12 cấu hình** được định nghĩa trong biế
 | Config name | LCF | Scoring | ToMe strategy | Resize |
 |---|---|---|---|---|
 | `baseline_balanced` | ✗ | — | — | — |
-| `attn_resize` | ✗ | — | `attention_weighted` | ✓ |
+| `scm_resize` | ✗ | — | `sequential_cosine` | ✓ |
 | `seq_resize` | ✗ | — | `sequential_local` | ✓ |
 | `bip_resize` | ✗ | — | `bipartite` | ✓ |
 | `lcf_only_cdm` | ✓ | CDM | — | — |
 | `lcf_only_cdw` | ✓ | CDW | — | — |
-| `lcf_attn_cdm_resize` | ✓ | CDM | `attention_weighted` | ✓ |
-| `lcf_attn_cdw_resize` | ✓ | CDW | `attention_weighted` | ✓ |
+| `lcf_scm_cdm_resize` | ✓ | CDM | `sequential_cosine` | ✓ |
+| `lcf_scm_cdw_resize` | ✓ | CDW | `sequential_cosine` | ✓ |
 | `lcf_bip_cdm_resize` | ✓ | CDM | `bipartite` | ✓ |
 | `lcf_bip_cdw_resize` | ✓ | CDW | `bipartite` | ✓ |
 | `lcf_seq_cdm_resize` | ✓ | CDM | `sequential_local` | ✓ |
@@ -350,6 +372,10 @@ python experiments/eval_joint_triplet.py --model-type t5
 python experiments/eval_results.py --model-type bert
 python experiments/eval_results.py --model-type t5
 # → runs_ate/eval_results_BERT.csv, eval_results_T5.csv
+
+# Đánh giá một danh sách folder cụ thể (thay vì toàn bộ runs-dir)
+python experiments/eval_joint_select.py --model-type bert \
+  --folders "baseline_balanced" "lcf_scm_cdm_resize" "lcf_seq_cdm_resize"
 ```
 
 ### Metrics
@@ -372,7 +398,7 @@ python experiments/eval_results.py --model-type t5
 | Cài đặt | Config tốt nhất | ATE F1 | Micro F1 | Macro F1 | Oracle Joint |
 |---|---|---|---|---|---|
 | Joint · BERT | `lcf_seq_cdm_resize` | 79.87 | **71.18** | 50.00 | 86.86 |
-| Joint · BERT | `lcf_attn_cdm_resize` | 79.87 | 69.89 | **57.16** | 86.54 |
+| Joint · BERT | `lcf_scm_cdm_resize` | 79.87 | 69.89 | **57.16** | 86.54 |
 | Joint · T5 | `seq_resize` | 79.87 | **71.50** | 50.12 | **89.10** |
 | Joint · T5 | `lcf_bip_cdm_resize` | 79.87 | 71.18 | **56.03** | 86.54 |
 | Pipeline · BERT | `lcf_seq_cdm_resize` | 59.76 | **53.57** | 40.29 | 86.86 |
@@ -457,14 +483,14 @@ Khi Ollama không kết nối được, UOS tự động fallback về câu gố
 ```bash
 # Linux / macOS
 ATE_CHECKPOINT=checkpoints/gas_t5_ate/best \
-APC_CHECKPOINT_DIR=runs_joint/lcf_seq_cdm_resize \
+APC_CHECKPOINT_DIR=runs_joint/lcf_scm_cdm_resize \
 BERT_NAME=bert-base-uncased \
 CLAUSE_SPLIT_MODE=none \
 uvicorn server.app:app --host 0.0.0.0 --port 5000
 
 # Windows (Command Prompt)
 set ATE_CHECKPOINT=checkpoints/gas_t5_ate/best
-set APC_CHECKPOINT_DIR=runs_joint/lcf_seq_cdm_resize
+set APC_CHECKPOINT_DIR=runs_joint/lcf_scm_cdm_resize
 set BERT_NAME=bert-base-uncased
 set CLAUSE_SPLIT_MODE=rulebase
 uvicorn server.app:app --host 0.0.0.0 --port 5000
@@ -532,6 +558,15 @@ python uos/run_llm_uos_eval.py
 
 Chi tiết: [`uos/README.md`](uos/README.md).
 
+### Minh hoạ thuật toán Token Merging
+
+```bash
+python scripts/visualize_scm.py            # Từng bước SCM trên chuỗi tổng quát
+python scripts/visualize_scm_example.py    # SCM trên câu ví dụ cụ thể
+```
+
+Xuất hình vào `thesis/figures/`.
+
 ---
 
 ## Biến môi trường
@@ -539,9 +574,18 @@ Chi tiết: [`uos/README.md`](uos/README.md).
 | Biến | Mặc định | Mô tả |
 |---|---|---|
 | `ATE_CHECKPOINT` | `checkpoints/gas_t5_ate/best` | Đường dẫn checkpoint T5 ATE |
-| `APC_CHECKPOINT_DIR` | `runs_joint/lcf_attn_cdm_resize` | Thư mục checkpoint BERT APC |
+| `APC_CHECKPOINT_DIR` | `runs_joint/lcf_scm_cdm_resize` | Thư mục checkpoint BERT APC |
 | `BERT_NAME` | `bert-base-uncased` | Tên pretrained BERT model |
-| `CLAUSE_SPLIT_MODE` | `uos` | Chế độ tách câu: `none` / `rulebase` / `uos` |
+| `CLAUSE_SPLIT_MODE` | `none` | Chế độ tách câu: `none` / `rulebase` / `uos` |
+
+---
+
+## Tài liệu khác
+
+- [`thesis/README.md`](thesis/README.md) — hướng dẫn biên dịch luận văn LaTeX (Overleaf)
+- [`uos/README.md`](uos/README.md) — chi tiết module UOS
+- [`docs/`](docs/) — tài liệu tham khảo (paper gốc, mô tả phương pháp) và PDF luận văn đã biên dịch
+- [`notebooks/`](notebooks/) — notebook thăm dò dữ liệu / so sánh kết quả, không thuộc pipeline huấn luyện chính
 
 ---
 
