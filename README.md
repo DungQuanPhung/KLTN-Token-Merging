@@ -24,6 +24,44 @@ Toàn bộ nội dung luận văn (LaTeX) nằm ở [`thesis/`](thesis/README.md
 
 ---
 
+## Chạy nhanh (Quick Start) — Inference qua Web UI
+
+Checkpoint mặc định (`checkpoints/gas_t5_ate/best` và `runs_joint/lcf_scm_cdm_resize`) đã có sẵn trong repo, có thể chạy thẳng không cần train lại. Thứ tự khởi động: **Ollama (nếu dùng UOS) → Backend → Frontend**.
+
+### 1. Ollama — chỉ cần nếu dùng tách câu bằng LLM (`CLAUSE_SPLIT_MODE=uos`)
+
+```bash
+ollama serve
+ollama pull qwen3:8b
+```
+
+Nếu không chạy Ollama, dùng `CLAUSE_SPLIT_MODE=none` hoặc `rulebase` thay thế. UOS cũng tự fallback về câu gốc nếu Ollama không kết nối được (không crash).
+
+### 2. Backend (FastAPI)
+
+```bash
+# Windows (Command Prompt)
+set CLAUSE_SPLIT_MODE=uos
+uvicorn server.app:app --host 0.0.0.0 --port 5000
+
+# Linux / macOS
+CLAUSE_SPLIT_MODE=uos uvicorn server.app:app --host 0.0.0.0 --port 5000
+```
+
+Các biến môi trường khác (`ATE_CHECKPOINT`, `APC_CHECKPOINT_DIR`, `BERT_NAME`) giữ mặc định nếu không set — xem chi tiết ở [Biến môi trường](#biến-môi-trường). Backend log dòng `[server] Loading pipeline: ATE=... APC=... clause_split_mode=...` khi khởi động thành công.
+
+### 3. Frontend (React + Vite)
+
+```bash
+cd frontend
+npm install    # chỉ cần lần đầu
+npm run dev
+```
+
+Mở `http://localhost:5173` — frontend gọi tới backend tại `http://localhost:5000`. Nhập trực tiếp một câu hoặc upload file `.txt`/`.docx` để xem kết quả. Chi tiết API xem [Web Interface](#web-interface).
+
+---
+
 ## Cấu trúc thư mục
 
 ```
