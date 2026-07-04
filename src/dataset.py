@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """ATE dataset loader for generative T5 training (GAS extraction-style).
 
-Delegates all parsing and dataset logic to ate_dataset_utils.py.
+Delegates all parsing and dataset logic to common/ate_dataset_utils.py.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ate_dataset_utils import (  # noqa: E402
+from common.ate_dataset_utils import (  # noqa: E402
     ATEDataset,
     DEFAULT_DATA_DIR,
     aspects_to_target,

@@ -36,7 +36,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoModel, T5EncoderModel, AutoTokenizer
 
-from dataset_utils import parse_apc_file, SENTIMENT_LABELS
+from common.dataset_utils import parse_apc_file, SENTIMENT_LABELS
 from models.fast_lcf_bert_multitask import FastLcfBertMultiTask
 
 # ─── Config ───────────────────────────────────────────────────────────────────

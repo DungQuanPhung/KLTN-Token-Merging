@@ -16,7 +16,7 @@ parameter on each public function:
 
 Public API:
 
-    from clause_splitting import extract_aspect_clause, split_into_clauses
+    from common.clause_splitting import extract_aspect_clause, split_into_clauses
 
     clauses = split_into_clauses("The room was clean but breakfast was cold.")
     # → [("The room was clean", 0), ("breakfast was cold.", 23)]  (rulebase)

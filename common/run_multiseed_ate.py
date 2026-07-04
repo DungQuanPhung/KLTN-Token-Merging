@@ -12,15 +12,15 @@ After all seeds, prints mean±std and saves:
   runs_ate/results_ate_summary.txt     ← aggregated mean±std
 
 The per-seed CSV (sentence, predicted_term, gold_terms) is the input expected by
-run_multiseed.py when using --ate-csv-dir runs_ate/ for seed-paired e2e evaluation.
+common/run_multiseed.py when using --ate-csv-dir runs_ate/ for seed-paired e2e evaluation.
 
-Usage:
-  python run_multiseed_ate.py                          # seeds [42, 123, 456]
-  python run_multiseed_ate.py --seeds 42 123 456 789 2024
-  python run_multiseed_ate.py --resume                 # skip finished seeds
-  python run_multiseed_ate.py --epochs 20 --lr 3e-4   # ATE-specific hyperparams
-  python run_multiseed_ate.py --model-name t5-base
-  python run_multiseed_ate.py --no-train               # aggregate only
+Usage (from repo root):
+  python common/run_multiseed_ate.py                          # seeds [42, 123, 456]
+  python common/run_multiseed_ate.py --seeds 42 123 456 789 2024
+  python common/run_multiseed_ate.py --resume                 # skip finished seeds
+  python common/run_multiseed_ate.py --epochs 20 --lr 3e-4   # ATE-specific hyperparams
+  python common/run_multiseed_ate.py --model-name t5-base
+  python common/run_multiseed_ate.py --no-train               # aggregate only
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -343,7 +343,7 @@ def main() -> None:
     print(f"  Precision: {agg['test_precision_mean']*100:.2f}%"
           f"  Recall: {agg['test_recall_mean']*100:.2f}%")
     print(f"\nNext step:")
-    print(f"  python run_multiseed.py --ate-csv-dir {runs_ate}")
+    print(f"  python common/run_multiseed.py --ate-csv-dir {runs_ate}")
     print(f"  → e2e eval uses seed-paired ATE predictions for each APC run")
     print(f"{'=' * 60}")
 

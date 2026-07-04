@@ -55,7 +55,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoModel, T5EncoderModel, AutoTokenizer
 from sklearn.metrics import f1_score, accuracy_score, classification_report, precision_score, recall_score
 
-from dataset_utils import (
+from common.dataset_utils import (
     ApcFileDataset,
     build_label_maps_from_apc,
     parse_apc_file,

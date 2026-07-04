@@ -13,7 +13,7 @@ Step 2 — Aspect Polarity Classification (APC):
 
 Usage
 -----
-    from pipeline_inference import PipelineInference
+    from common.pipeline_inference import PipelineInference
 
     pipe = PipelineInference.load(
         ate_checkpoint="checkpoints/ate/best",
@@ -27,20 +27,28 @@ Usage
         print(r)
     # {"aspect": "food",    "sentiment": "positive", "category": "FOOD"}
     # {"aspect": "service", "sentiment": "negative",  "category": "SERVICE"}
+
+CLI (from repo root):
+    python common/pipeline_inference.py --ate-checkpoint ... --apc-checkpoint-dir ...
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from src.model import T5AspectExtractor
 from src.inference import predict_aspects
-from clause_splitting import extract_aspect_clause, split_into_clauses
+from common.clause_splitting import extract_aspect_clause, split_into_clauses
 
 
 SENTIMENT_LABELS = ["positive", "negative", "neutral"]
@@ -394,7 +402,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="ATE → APC pipeline inference (aspect term + category + sentiment)"
+        description="ATE -> APC pipeline inference (aspect term + category + sentiment)"
     )
     parser.add_argument("--ate-checkpoint", required=True,
                         help="Directory saved by T5AspectExtractor.save()")

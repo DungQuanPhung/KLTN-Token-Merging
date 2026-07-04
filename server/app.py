@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from docx import Document
 
-from pipeline_inference import PipelineInference
+from common.pipeline_inference import PipelineInference
 
 
 def read_txt_lines(file_bytes: bytes) -> List[str]:
@@ -53,7 +53,7 @@ app.add_middleware(
 
 # Load config from env
 ATE_CHECKPOINT = os.environ.get("ATE_CHECKPOINT", "checkpoints/gas_t5_ate/best")
-APC_CHECKPOINT_DIR = os.environ.get("APC_CHECKPOINT_DIR", "runs_joint/lcf_scm_cdm_resize")
+APC_CHECKPOINT_DIR = os.environ.get("APC_CHECKPOINT_DIR", "runs_joint/lcf_bip_resize")
 BERT_NAME = os.environ.get("BERT_NAME", "bert-base-uncased")
 def _get_env_str(name: str, default: str) -> str:
     """Read env var, strip surrounding quotes/whitespace and drop inline comments after '#'."""
@@ -77,7 +77,7 @@ def _get_env_int(name: str, default: int) -> int:
 
 
 ATE_CHECKPOINT = _get_env_str("ATE_CHECKPOINT", "checkpoints/gas_t5_ate/best")
-APC_CHECKPOINT_DIR = _get_env_str("APC_CHECKPOINT_DIR", "runs_joint/lcf_scm_cdm_resize")
+APC_CHECKPOINT_DIR = _get_env_str("APC_CHECKPOINT_DIR", "runs_joint/lcf_bip_resize")
 BERT_NAME = _get_env_str("BERT_NAME", "bert-base-uncased")
 CLAUSE_SPLIT_MODE = _get_env_str("CLAUSE_SPLIT_MODE", "none")  # "none" | "rulebase" | "uos"
 

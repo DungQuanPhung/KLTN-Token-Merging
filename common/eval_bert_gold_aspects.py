@@ -5,8 +5,8 @@ Aspect terms are taken directly from test.apc (ground truth) — no ATE
 prediction error.  This measures the upper-bound APC + category quality
 of each trained model.
 
-Usage:
-    python eval_bert_gold_aspects.py
+Usage (from repo root):
+    python common/eval_bert_gold_aspects.py
 
 Output:
     runs_bert_gold/eval_gold_aspects.csv   ← one row per config
@@ -29,11 +29,11 @@ from sklearn.metrics import (
     accuracy_score, f1_score, precision_score, recall_score,
 )
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from dataset_utils import (
+from common.dataset_utils import (
     ApcFileDataset,
     build_label_maps_from_apc,
     SENTIMENT_LABELS,

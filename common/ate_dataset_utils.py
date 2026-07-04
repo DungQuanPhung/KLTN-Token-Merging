@@ -23,7 +23,7 @@ from transformers import PreTrainedTokenizer, T5Tokenizer
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "dataset"
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "dataset"
 SPLIT_FILES = {
     "train": "train.apc",
     "dev":   "dev.apc",

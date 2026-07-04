@@ -31,7 +31,7 @@ import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
-from clause_splitting import extract_aspect_clause
+from common.clause_splitting import extract_aspect_clause
 
 # ─── Label maps ───────────────────────────────────────────────────────────────
 

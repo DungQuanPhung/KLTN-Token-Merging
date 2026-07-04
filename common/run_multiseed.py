@@ -14,16 +14,16 @@ Hyperparameters (thesis tab:hyperparams):
   lr=2e-5  epochs=15  patience=4  batch=16  max_seq=128  dropout=0.1
   heads=8  srd=5  tome_post_steps=2  tome_pre_steps=1
 
-Usage:
-  python run_multiseed.py                          # bert+t5, seeds [42,123,456], 12 resize configs
-  python run_multiseed.py --seeds 42 123 456 789 2024
-  python run_multiseed.py --model-types bert
-  python run_multiseed.py --configs baseline lcf_bip_cdm
-  python run_multiseed.py --include-compact        # also run 4 compact configs
-  python run_multiseed.py --ate-csv runs_ate/test_ate_predictions.csv
-  python run_multiseed.py --ate-f1 79.87           # GAS ATE F1 for table headers
-  python run_multiseed.py --resume                 # skip finished checkpoints
-  python run_multiseed.py --no-train               # aggregate only
+Usage (from repo root):
+  python common/run_multiseed.py                          # bert+t5, seeds [42,123,456], 12 resize configs
+  python common/run_multiseed.py --seeds 42 123 456 789 2024
+  python common/run_multiseed.py --model-types bert
+  python common/run_multiseed.py --configs baseline lcf_bip_cdm
+  python common/run_multiseed.py --include-compact        # also run 4 compact configs
+  python common/run_multiseed.py --ate-csv runs_ate/test_ate_predictions.csv
+  python common/run_multiseed.py --ate-f1 79.87           # GAS ATE F1 for table headers
+  python common/run_multiseed.py --resume                 # skip finished checkpoints
+  python common/run_multiseed.py --no-train               # aggregate only
 
 Outputs (under runs_multiseed/):
   results_raw.csv / results_aggregated.csv / results_summary.txt
@@ -45,7 +45,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -58,7 +58,7 @@ from sklearn.metrics import (
     f1_score, accuracy_score, precision_score, recall_score,
 )
 
-from dataset_utils import (
+from common.dataset_utils import (
     ApcFileDataset,
     build_label_maps_from_apc,
     parse_apc_file,
@@ -1027,7 +1027,7 @@ def main() -> None:
                         )
                         if not seed_ate_csv.is_file():
                             print(f"    [warn] Seed-paired ATE CSV not found: {seed_ate_csv}")
-                            print(f"           Run: python run_multiseed_ate.py --seeds {seed}")
+                            print(f"           Run: python common/run_multiseed_ate.py --seeds {seed}")
                             seed_ate_csv = None
                         else:
                             print(f"    ATE (seed={seed}): {seed_ate_csv}")

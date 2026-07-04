@@ -150,13 +150,16 @@ thesis_apc_baseline/
 │   ├── references.bib
 │   └── figures/
 │
-├── pipeline_inference.py           # PipelineInference: ATE → Clause Split → APC
-├── infer_aspect_term.py            # CLI infer APC cho một aspect term cụ thể
-├── dataset_utils.py                # ApcFileDataset: parser .apc + supplement
-├── ate_dataset_utils.py            # ATEDataset: parser .apc cho T5
-├── clause_splitting.py             # Tách câu: none / rulebase / uos
-├── run_multiseed.py                # Huấn luyện nhiều seed, tổng hợp bảng cho luận văn
-├── run_multiseed_ate.py            # Tương tự, cho module ATE
+├── common/                         # Utility dùng chung + script CLI gốc (import as common.xxx)
+│   ├── pipeline_inference.py       # PipelineInference: ATE -> Clause Split -> APC
+│   ├── infer_aspect_term.py        # CLI infer APC cho một aspect term cụ thể
+│   ├── dataset_utils.py            # ApcFileDataset: parser .apc + supplement
+│   ├── ate_dataset_utils.py        # ATEDataset: parser .apc cho T5
+│   ├── clause_splitting.py         # Tách câu: none / rulebase / uos
+│   ├── eval_bert_gold_aspects.py   # Đánh giá APC với gold aspect (oracle)
+│   ├── run_multiseed.py            # Huấn luyện nhiều seed, tổng hợp bảng cho luận văn
+│   └── run_multiseed_ate.py        # Tương tự, cho module ATE
+│
 └── requirements.txt
 ```
 
@@ -467,7 +470,7 @@ Phản ánh mất cân bằng nhãn nghiêm trọng trong dữ liệu — không
 ### Pipeline end-to-end (ATE → APC)
 
 ```bash
-python pipeline_inference.py \
+python common/pipeline_inference.py \
   --ate-checkpoint checkpoints/gas_t5_ate/best \
   --apc-checkpoint-dir runs_joint/lcf_seq_cdm_resize \
   --bert-name bert-base-uncased \
@@ -487,7 +490,7 @@ python pipeline_inference.py \
 ### APC cho một aspect đã biết
 
 ```bash
-python infer_aspect_term.py \
+python common/infer_aspect_term.py \
   --apc-checkpoint-dir runs_joint/lcf_seq_cdm_resize \
   --bert-name bert-base-uncased \
   --sentence "The bedroom was clean and very spacious." \
@@ -634,4 +637,5 @@ Xuất hình vào `thesis/figures/`.
 - **T5:** Raffel et al. (2020). *Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.* JMLR.
 - **GAS:** Zhang et al. (2021). *Towards Generative Aspect-Based Sentiment Analysis.* ACL-IJCNLP 2021.
 - **PyABSA:** Yang et al. *PyABSA: A Modularized Framework for Reproducible Aspect-based Sentiment Analysis.*
-- 
+
+lcf bipartite tome cdm 
