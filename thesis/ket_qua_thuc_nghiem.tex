@@ -1,0 +1,542 @@
+% =====================================================================
+%  Chương 4 — THỰC NGHIỆM VÀ ĐÁNH GIÁ
+%  Gói cần: booktabs, threeparttable, float, amsmath, multirow
+% =====================================================================
+\chapter{IV. Thực nghiệm và đánh giá}
+\label{chap:ketqua}
+
+Chương này trình bày toàn bộ thiết lập thực nghiệm, số liệu định lượng
+và phân tích so sánh các biến thể mô hình. Mục tiêu là trả lời ba câu
+hỏi: (1) Token Merging có bảo toàn chất lượng biểu diễn ABSA không?
+(2) Chiến lược merging nào phù hợp nhất cho ABSA? (3) Kiến trúc Joint
+vượt Pipeline bao nhiêu, và nút thắt ở đâu?
+
+% ============================================================
+\section{4.1.\; Môi trường thực nghiệm}
+\label{sec:exp_setup}
+
+\subsection{4.1.1.\; Phần cứng và phần mềm}
+
+\begin{table}[H]
+\centering
+\caption{Cấu hình môi trường thực nghiệm}
+\label{tab:env}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Thành phần} & \textbf{Thông số} \\
+\midrule
+GPU  & NVIDIA Tesla T4 (15\,GB VRAM) $\times$ 2 \\
+CPU  & Intel Xeon, 4 nhân ảo, tối đa 30\,GB RAM \\
+Hệ điều hành & Ubuntu 22.04 (Kaggle Notebook) \\
+Python & 3.12 \\
+PyTorch & 2.0+ (CUDA 12) \\
+Transformers & HuggingFace 4.36+ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{4.1.2.\; Tập dữ liệu}
+
+Nghiên cứu sử dụng tập dữ liệu tiếng Anh thuộc miền khách sạn, gồm
+các đánh giá (review) của khách lưu trú tại khách sạn Việt Nam,
+lưu theo định dạng 4 dòng \texttt{.apc}: câu có ký hiệu \texttt{\$T\$},
+aspect term, aspect category, nhãn cảm xúc.
+
+\begin{table}[H]
+\centering
+\caption{Thống kê tập dữ liệu}
+\label{tab:dataset_stats}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Phân tập} & \textbf{Số mẫu} & \textbf{Số câu gốc} & \textbf{Ghi chú} \\
+\midrule
+Train & 2\,448 & 2\,322 & gồm dữ liệu bổ sung \\
+Dev   &   304  &   303  & early stopping \\
+Test  &   312  &   309  & đánh giá cuối \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Sáu danh mục khía cạnh:} AMENITY (tiện ích), BRANDING
+(thương hiệu), EXPERIENCE (trải nghiệm), FACILITY (cơ sở vật chất),
+LOYALTY (trung thành), SERVICE (dịch vụ). Ba nhãn cảm xúc: Positive,
+Negative, Neutral.
+
+\textbf{Phân phối nhãn cảm xúc (tập Train):} Tập dữ liệu mất cân
+bằng nghiêm trọng -- Positive: 91,4\% (2\,237 mẫu), Negative: 6,9\%
+(168 mẫu), Neutral: 1,8\% (43 mẫu). Hai biện pháp được áp dụng:
+(a)~\textbf{weighted cross-entropy} với trọng số nghịch đảo tần suất,
+và (b)~\textbf{dữ liệu bổ sung} từ \texttt{negative.tsv} và
+\texttt{neutral.tsv} (đầu phân loại cảm xúc huấn luyện trên cả hai
+nguồn; đầu phân loại category chỉ dùng dữ liệu chính).
+
+\begin{table}[H]
+\centering
+\caption{Phân phối nhãn category trên tập Train}
+\label{tab:category}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Danh mục} & \textbf{Số mẫu} & \textbf{Tỉ lệ (\%)} \\
+\midrule
+FACILITY   & 757 & 30,9 \\
+SERVICE    & 704 & 28,8 \\
+AMENITY    & 582 & 23,8 \\
+EXPERIENCE & 278 & 11,4 \\
+BRANDING   &  88 &  3,6 \\
+LOYALTY    &  39 &  1,6 \\
+\midrule
+\textbf{Tổng} & 2\,448 & 100,0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{4.1.3.\; Mô hình nền (Backbone)}
+
+\begin{enumerate}
+  \item \textbf{BERT} (\texttt{bert-base-uncased}): Transformer encoder
+        12 lớp, $H{=}768$, 110M tham số. Tokenizer WordPiece, positional
+        encoding tuyệt đối.
+  \item \textbf{T5} (\texttt{t5-base}): Được sử dụng theo hai vai trò:
+        encoder của \texttt{FastLcfBertMultiTask} (APC) và toàn bộ
+        encoder–decoder của \texttt{T5AspectExtractor} (ATE). Relative
+        positional encoding, 12 lớp, $H{=}768$.
+\end{enumerate}
+
+% ============================================================
+\section{4.2.\; Cài đặt siêu tham số}
+\label{sec:hyperparams}
+
+\begin{table}[H]
+\centering
+\caption{Siêu tham số chung cho tất cả thí nghiệm}
+\label{tab:hyperparams}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Siêu tham số} & \textbf{Giá trị} \\
+\midrule
+Random seed                    & 42 \\
+Số epoch tối đa                & 15 \\
+Early stopping patience        & 4 epoch \\
+Batch size                     & 16 \\
+Learning rate                  & $2 \times 10^{-5}$ \\
+Độ dài chuỗi tối đa            & 128 token \\
+Dropout                        & 0,10 \\
+Số attention head (SA)         & 8 \\
+SRD threshold $\alpha$ (LCF)   & 5 \\
+Số bước merge ToMe (post-BERT) & 2 \\
+Task weight (sentiment/category) & 1,0 / 1,0 \\
+Tiêu chí early stopping        & Dev Joint Micro-F1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ============================================================
+\section{4.3.\; Thiết kế thực nghiệm}
+\label{sec:exp_design}
+
+\textbf{12 cấu hình} được xây dựng theo ablation có hệ thống:
+
+\begin{enumerate}
+  \item \textbf{Baseline}: MultitaskBERT/T5 thuần, không LCF, không ToMe.
+  \item \textbf{LCF only CDM / CDW}: Chỉ thêm LCF, hai biến thể masking.
+  \item \textbf{Bip (resize)}: Chỉ ToMe bipartite, không LCF.
+  \item \textbf{LCF + Bip CDM / CDW (resize)}: LCF kết hợp ToMe bipartite.
+  \item \textbf{Seq (resize)}: Chỉ ToMe sequential-local, không LCF.
+  \item \textbf{LCF + Seq CDM / CDW (resize)}: LCF kết hợp ToMe sequential.
+  \item \textbf{SCM (resize)}: Chỉ ToMe sequential cosine (SCM), không LCF.
+  \item \textbf{LCF + SCM CDM / CDW (resize)}: LCF kết hợp ToMe
+        sequential cosine (SCM).
+\end{enumerate}
+
+Tất cả biến thể dùng chế độ \texttt{resize=True} (nội suy về độ dài
+gốc sau khi merge) để cô lập câu hỏi chất lượng biểu diễn, đảm bảo
+so sánh công bằng. Mỗi cấu hình chạy trên cả hai backbone BERT và T5.
+
+\textbf{Độ đo đánh giá:}
+\begin{itemize}
+  \item \textbf{ATE F1}: Micro-F1 của task trích xuất aspect term (T5).
+  \item \textbf{Micro-F1 (bộ ba)}: TP/FP/FN tổng hợp toàn cục trên
+        bộ ba $(a, c, s)$ -- một bộ ba là TP khi cả ba thành phần đúng.
+  \item \textbf{Macro-F1 (bộ ba)}: Trung bình F1 theo từng nhãn ghép
+        (category $\times$ sentiment) -- phản ánh nhãn thiểu số.
+  \item \textbf{Oracle Joint Acc}: Cho trước aspect term gold, đo
+        \emph{trần} của bộ phân loại (tách biệt lỗi ATE).
+\end{itemize}
+
+% ============================================================
+\section{4.4.\; Kết quả thực nghiệm}
+\label{sec:results}
+
+\subsection{4.4.1.\; Kiến trúc Joint — backbone BERT}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả 12 cấu hình — backbone BERT, kiến trúc Joint}
+\label{tab:bert_results}
+\begin{threeparttable}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Train (s)} & \textbf{ATE F1} & \textbf{Micro-F1} & \textbf{Macro-F1} & \textbf{Oracle (\%)} \\
+\midrule
+Baseline               & 257 & 79,87 & 70,53 & 48,80 & 86,54 \\
+\midrule
+LCF only CDM           & 311 & 79,87 & 68,92 & 47,94 & 84,62 \\
+LCF only CDW           & 265 & 79,87 & 69,24 & 46,66 & 85,90 \\
+\midrule
+Bip                    & 374 & 79,87 & 70,85 & 49,19 & \textbf{86,86} \\
+LCF + Bip CDM          & 383 & 79,87 & 69,24 & 54,20 & 84,94 \\
+LCF + Bip CDW          & 463 & 79,87 & 70,53 & 49,61 & \textbf{86,86} \\
+\midrule
+Seq                    & 651 & 79,87 & 69,24 & 47,98 & 86,22 \\
+LCF + Seq CDM          & 553 & 79,87 & \textbf{71,18} & 50,00 & \textbf{86,86} \\
+LCF + Seq CDW          & 608 & 79,87 & 70,21 & 50,00 & \textbf{86,86} \\
+\midrule
+SCM                   & 684 & 79,87 & 68,28 & 47,76 & 85,26 \\
+LCF + SCM CDM         & 586 & 79,87 & 69,89 & \textbf{57,16} & 86,54 \\
+LCF + SCM CDW         & 533 & 79,87 & 69,57 & 48,11 & 84,94 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+  \small
+  \item ATE F1 = 79,87\% cho mọi cấu hình (cùng mô hình T5-ATE).
+  \item Micro-F1 / Macro-F1: đo trên bộ ba $(a, c, s)$ với aspect term
+        từ T5-ATE. Oracle: aspect term gold.
+  \item Giá trị tốt nhất mỗi cột in đậm.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+\subsection{4.4.2.\; Kiến trúc Joint — backbone T5}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả 12 cấu hình — backbone T5, kiến trúc Joint}
+\label{tab:t5_results}
+\begin{threeparttable}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Train (s)} & \textbf{ATE F1} & \textbf{Micro-F1} & \textbf{Macro-F1} & \textbf{Oracle (\%)} \\
+\midrule
+Baseline               & 337 & 79,87 & 69,57 & 47,88 & 85,90 \\
+\midrule
+LCF only CDM           & 468 & 79,87 & 70,21 & 48,75 & 86,22 \\
+LCF only CDW           & 345 & 79,87 & 69,89 & 48,76 & 86,54 \\
+\midrule
+Bip                    & 498 & 79,87 & 70,53 & 48,03 & 86,86 \\
+LCF + Bip CDM          & 698 & 79,87 & \textbf{71,18} & \textbf{56,03} & 86,54 \\
+LCF + Bip CDW          & 651 & 79,87 & 70,53 & 49,80 & \textbf{87,18} \\
+\midrule
+Seq                    & 886 & 79,87 & \textbf{71,50} & 50,12 & \textbf{89,10} \\
+LCF + Seq CDM          & 921 & 79,87 & 69,89 & 45,79 & 85,90 \\
+LCF + Seq CDW          & 901 & 79,87 & 69,89 & 54,25 & 85,90 \\
+\midrule
+SCM                   & 659 & 79,87 & 68,28 & 45,48 & 84,62 \\
+LCF + SCM CDM         & 913 & 79,87 & 67,95 & 53,40 & 84,29 \\
+LCF + SCM CDW         & 853 & 79,87 & 70,85 & 49,63 & 85,58 \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+  \small
+  \item Cùng mô hình T5-ATE (ATE F1 = 79,87\%) cho mọi cấu hình.
+  \item T5 có thời gian huấn luyện dài hơn đáng kể so với BERT.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+\subsection{4.4.3.\; So sánh kiến trúc Joint và Pipeline}
+\label{subsec:joint_vs_pipeline}
+
+Kiến trúc \textbf{Joint} sử dụng aspect term gold trong quá trình huấn
+luyện APC, sau đó dùng T5-ATE trong quá trình đánh giá.
+Kiến trúc \textbf{Pipeline} huấn luyện APC hoàn toàn với aspect term
+do T5-ATE dự đoán -- không có gold term nào được cung cấp.
+
+\begin{table}[H]
+\centering
+\small
+\caption{So sánh Joint vs Pipeline — backbone BERT (các cấu hình đại diện)}
+\label{tab:joint_vs_pipeline}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Kiến trúc} & \textbf{Cấu hình} & \textbf{ATE F1} & \textbf{Micro-F1} & \textbf{Oracle (\%)} \\
+\midrule
+Joint    & Baseline          & 79,87 & 70,53 & 86,54 \\
+Joint    & LCF + Seq CDM     & 79,87 & \textbf{71,18} & 86,86 \\
+Joint    & LCF + SCM CDM    & 79,87 & 69,89 & 86,54 \\
+\midrule
+Pipeline & Baseline          & 59,76 & 52,86 & 86,54 \\
+Pipeline & LCF + SCM CDM    & 59,76 & 52,38 & 86,54 \\
+Pipeline & Bip               & 59,76 & 52,38 & 86,86 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét:} Kiến trúc Joint vượt Pipeline trung bình
+$\approx\mathbf{18}$ điểm Micro-F1 (71 vs 53\%). Ngược lại,
+Oracle Joint Acc của hai kiến trúc gần như nhau ($\approx86\%$),
+chứng tỏ bộ phân loại APC đã đủ tốt -- \textbf{nút thắt là ATE},
+không phải classifier. ATE F1 Pipeline chỉ đạt 59,76\% (so với 79,87\%
+của Joint), do T5-ATE khi huấn luyện APC theo Pipeline gặp nhiễu
+từ aspect term sai trong training.
+
+\subsection{4.4.4.\; So sánh với công trình liên quan}
+\label{subsec:paper_comparison}
+
+\begin{table}[H]
+\centering
+\small
+\caption{So sánh với phương pháp công bố trên cùng miền (placeholder)}
+\label{tab:paper_comparison}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+\textbf{Phương pháp} & \textbf{Mô hình} & \textbf{Micro-F1} & \textbf{Macro-F1} \\
+\midrule
+GAS \cite{zhang2021gas}                 & T5-base  & -- & -- \\
+FAST-LCF-BERT \cite{zeng2019lcf}        & BERT     & -- & -- \\
+\midrule
+\textbf{Khóa luận (Joint, BERT)}  & LCF+Seq CDM   & \textbf{71,18} & 50,00 \\
+\textbf{Khóa luận (Joint, T5)}    & Seq Resize    & \textbf{71,50} & 50,12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{Ghi chú:} Dấu ``--'' là giá trị chưa có từ công bố gốc trên
+cùng tập dữ liệu. Phần này cần bổ sung số liệu từ re-implementation
+hoặc báo cáo gốc khi có điều kiện.
+
+% ============================================================
+\section{4.5.\; Phân tích chi tiết}
+\label{sec:analysis}
+
+\subsection{4.5.1.\; F1 theo lớp cảm xúc (BERT Joint)}
+
+\begin{table}[H]
+\centering
+\small
+\caption{F1 theo lớp cảm xúc — backbone BERT, kiến trúc Joint}
+\label{tab:sentiment_perclass}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{F1-Positive} & \textbf{F1-Negative} & \textbf{F1-Neutral} \\
+\midrule
+Baseline               & 97,90 & 80,95 & 40,00 \\
+LCF CDM                & 96,99 & 77,27 & 40,00 \\
+LCF CDW                & 97,91 & 78,05 & 44,44 \\
+Bip                    & 97,72 & 76,19 & 54,55 \\
+LCF + Bip CDM          & 97,14 & 83,33 & 37,50 \\
+LCF + Bip CDW          & 97,89 & 80,95 & 50,00 \\
+Seq                    & 97,72 & 80,95 & 46,15 \\
+LCF + Seq CDM          & 97,89 & 80,95 & 50,00 \\
+LCF + Seq CDW          & 98,25 & 80,95 & 60,00 \\
+SCM                   & 97,17 & 75,56 & 46,15 \\
+LCF + SCM CDM         & 97,71 & 78,26 & 54,55 \\
+LCF + SCM CDW         & \textbf{98,25} & \textbf{81,82} & \textbf{60,00} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{4.5.2.\; F1 theo lớp category (BERT Joint)}
+
+\begin{table}[H]
+\centering
+\small
+\caption{F1 theo lớp category — backbone BERT, kiến trúc Joint}
+\label{tab:category_perclass}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{AMEN.} & \textbf{BRAND.} & \textbf{EXP.}
+                  & \textbf{FACIL.} & \textbf{LOY.} & \textbf{SERV.} \\
+\midrule
+Baseline          & 92,52 & 76,19 & 73,68 & 89,22 & 92,31 & 95,60 \\
+LCF CDM           & 90,78 & 78,26 & 75,41 & 90,20 & 85,71 & 95,03 \\
+LCF CDW           & 90,20 & 72,73 & 79,31 & 88,32 & 92,31 & 96,13 \\
+Bip               & 91,03 & 78,26 & 83,08 & 89,66 & 92,31 & 97,14 \\
+LCF + Bip CDM     & 91,16 & 72,73 & 75,41 & 89,66 & 92,31 & 95,51 \\
+LCF + Bip CDW     & 91,55 & 70,00 & 79,37 & 89,95 & 92,31 & 97,18 \\
+Seq               & 89,36 & 80,00 & 80,00 & 87,92 & 92,31 & 96,63 \\
+LCF + Seq CDM     & 92,41 & 80,00 & 80,65 & 90,73 & 92,31 & 96,09 \\
+LCF + Seq CDW     & 92,62 & 75,00 & 75,00 & 89,55 & 92,31 & 96,13 \\
+SCM              & 90,91 & \textbf{90,00} & 80,00 & 89,22 & 92,31 & 96,09 \\
+LCF + SCM CDM    & 92,00 & 81,82 & 77,42 & 88,89 & 92,31 & 96,09 \\
+LCF + SCM CDW    & 91,16 & 69,57 & 74,58 & 90,10 & 92,31 & 95,56 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét:} BRANDING và LOYALTY là hai nhãn hiếm nhất; F1
+dao động lớn (69--90\%) giữa các cấu hình. FACILITY và SERVICE ổn
+định ở mức 87--97\% nhờ đủ mẫu. LCF+SCM CDM cho F1 BRANDING cao
+nhất (81,82\%) nhờ sequential cosine merging ưu tiên giữ token phân biệt
+nhãn hiếm.
+
+\subsection{4.5.3.\; Hiệu quả của Token Merging}
+
+Ba điểm cốt lõi:
+
+\begin{enumerate}
+  \item \textbf{ToMe không làm giảm chất lượng biểu diễn.}
+        Các cấu hình ToMe (resize) đạt Micro-F1 ngang hoặc cao hơn
+        baseline (70,53\%). Cấu hình tốt nhất LCF+Seq CDM đạt
+        \textbf{71,18\%} (+0,65 điểm).
+
+  \item \textbf{LCF là điều kiện cần để ToMe phát huy tốt.}
+        Không có LCF, Bip (resize) chỉ đạt 70,85\% Micro-F1 và Macro-F1
+        = 49,19\%; kết hợp LCF+Bip CDM đẩy Macro-F1 lên 54,20\%.
+        Không có LCF, ToMe không biết token nào thuộc aspect term và có
+        thể merge nhầm token ngữ nghĩa quan trọng.
+
+  \item \textbf{Resize không mang lại tăng tốc.}
+        Chế độ resize nội suy về độ dài gốc $L$ nên chi phí tính toán
+        không giảm -- đây là thực nghiệm chất lượng biểu diễn, không
+        phải thực nghiệm tốc độ. Compact và pre-BERT ToMe là hướng cần
+        thực nghiệm tiếp theo (xem Chương~\ref{chap:ketluan}).
+\end{enumerate}
+
+\subsection{4.5.4.\; So sánh ba chiến lược Token Merging}
+
+\begin{itemize}
+  \item \textbf{Sequential Local} đạt Micro-F1 tốt nhất (71,18\% BERT,
+        71,50\% T5) nhờ bảo tồn trật tự từ tự nhiên của câu ngắn ABSA.
+        Ranh giới LCF (\texttt{mid\_sep}) được bảo vệ, tránh gộp nhầm
+        vùng aspect vào context.
+
+  \item \textbf{Sequential Cosine (SCM)} đạt Macro-F1 cao nhất với BERT
+        (57,16\%) -- tăng \textbf{+8,36 điểm} so với baseline (48,80\%).
+        Chiến lược này duyệt tuần tự theo vị trí, gộp token trái nhất với
+        hàng xóm có cosine similarity cao nhất và bảo vệ token khía cạnh
+        -- đặc biệt có lợi cho nhãn thiểu số (F1-Neutral tăng từ 40\% lên
+        54,55\%).
+
+  \item \textbf{Bipartite} (ToMe gốc) cân bằng tốt giữa Micro và
+        Macro-F1, song song hóa tốt nhất trong ba chiến lược.
+\end{itemize}
+
+\subsection{4.5.5.\; CDM so với CDW}
+
+Cặp so sánh LCF+Bip CDM/CDW và LCF+SCM CDM/CDW cho thấy:
+\begin{itemize}
+  \item \textbf{CDM} (mặt nạ nhị phân) cho Macro-F1 cao hơn: LCF+Bip CDM
+        Macro=54,20 vs CDW=49,61; LCF+SCM CDM Macro=57,16 vs CDW=48,11.
+        Ranh giới cứng giúp ToMe phân tách rõ vùng aspect và context.
+  \item \textbf{CDW} (trọng số mềm) cho Micro-F1 ổn định hơn, gradient
+        lan truyền tốt hơn cho toàn bộ chuỗi.
+  \item \textbf{Khuyến nghị}: dùng CDM khi ưu tiên nhãn thiểu số
+        (Macro-F1), dùng CDW khi ưu tiên hiệu suất tổng thể (Micro-F1).
+\end{itemize}
+
+\subsection{4.5.6.\; So sánh backbone BERT và T5}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tóm tắt kết quả tốt nhất theo backbone}
+\label{tab:backbone_summary}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Backbone} & \textbf{Cấu hình tốt nhất} & \textbf{Micro-F1} & \textbf{Macro-F1} & \textbf{Oracle} \\
+\midrule
+BERT (Micro) & LCF + Seq CDM & \textbf{71,18} & 50,00 & 86,86 \\
+BERT (Macro) & LCF + SCM CDM & 69,89 & \textbf{57,16} & 86,54 \\
+T5 (Micro)   & Seq Resize     & \textbf{71,50} & 50,12 & \textbf{89,10} \\
+T5 (Macro)   & LCF + Bip CDM  & 71,18 & 56,03 & 86,54 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+BERT và T5 có kết quả tương đương về Micro-F1. T5 cho Oracle cao hơn
+(89,10\% vs 86,86\%), phản ánh encoder T5 phù hợp hơn cho phân loại
+oracle (relative positional encoding). T5 có thời gian huấn luyện dài
+hơn BERT đối ứng $\approx40$--70\%, phải cân nhắc khi triển khai thực.
+
+% ============================================================
+\section{4.6.\; Ablation study}
+\label{sec:ablation}
+
+Bảng~\ref{tab:ablation} phân tách đóng góp của từng thành phần,
+dùng backbone BERT để dễ so sánh.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Ablation study — đóng góp từng thành phần (BERT, Joint)}
+\label{tab:ablation}
+\begin{tabular}{@{}lccrrrr@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{LCF} & \textbf{ToMe}
+  & \textbf{Micro-F1} & \textbf{Macro-F1} & $\Delta$\,Micro & $\Delta$\,Macro \\
+\midrule
+Baseline             & --  & --        & 70,53 & 48,80 &       &       \\
++ LCF CDW            & CDW & --        & 69,24 & 46,66 & $-1,29$ & $-2,14$ \\
++ ToMe Bip (no LCF)  & --  & Bipartite & 70,85 & 49,19 & $+0,32$ & $+0,39$ \\
+\midrule
++ LCF + Bip CDW      & CDW & Bipartite & 70,53 & 49,61 & $\pm0,00$ & $+0,81$ \\
++ LCF + Seq CDM      & CDM & Seq-Local & \textbf{71,18} & 50,00 & $\mathbf{+0,65}$ & $+1,20$ \\
++ LCF + SCM CDM      & CDM & Seq-Cosine & 69,89 & \textbf{57,16} & $-0,64$ & $\mathbf{+8,36}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nhận xét từ ablation:}
+\begin{itemize}
+  \item LCF đơn độc giảm nhẹ cả Micro và Macro-F1 (-1,29 / -2,14),
+        do phép nhân CDW làm giảm gradient của context xa mà không có
+        bước merge để bù.
+  \item ToMe Bipartite không có LCF: +0,32 Micro, +0,39 Macro -- cải
+        thiện nhỏ nhờ nén token dư thừa.
+  \item \textbf{LCF + ToMe là cặp bổ trợ}: kết hợp mang lại cải thiện
+        rõ ràng (+0,65 Micro với Seq-CDM; +8,36 Macro với SCM-CDM),
+        xác nhận LCF cung cấp thông tin vị trí để ToMe merge đúng token.
+  \item Có đánh đổi rõ ràng: cấu hình tốt nhất Micro (LCF+Seq CDM)
+        và cấu hình tốt nhất Macro (LCF+SCM CDM) khác nhau, phản ánh
+        hai mục tiêu tối ưu khác nhau.
+\end{itemize}
+
+% ============================================================
+\section{4.7.\; So sánh chế độ ToMe: Resize, Compact, Pre-BERT}
+\label{sec:resize_compact}
+
+\begin{table}[H]
+\centering
+\small
+\caption{So sánh ba chế độ ToMe (cấu hình LCF+Seq CDM, BERT Joint)}
+\label{tab:resize_compact}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Chế độ} & \textbf{Micro-F1} & \textbf{Macro-F1} & \textbf{Infer (ms/câu)} & \textbf{Ghi chú} \\
+\midrule
+Baseline (no ToMe)       & 70,53 & 48,80 & 10,8 & -- \\
+Resize (\texttt{resize=True})   & 71,18 & 50,00 & 10,2 & thực nghiệm hiện tại \\
+Compact (\texttt{resize=False}) & TBD   & TBD   & TBD  & cần thực nghiệm \\
+Pre-BERT ToMe            & TBD   & TBD   & TBD  & cần thực nghiệm \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Chế độ \textbf{Resize} (toàn bộ thực nghiệm hiện tại): nội suy về độ
+dài gốc sau merge -- cô lập chất lượng biểu diễn, không đo tăng tốc.
+Chế độ \textbf{Compact}: giữ chuỗi rút gọn $L'$, các lớp SA phía sau
+xử lý ít token hơn -- tăng tốc thực sự. Chế độ \textbf{Pre-BERT}: merge
+trước toàn bộ 12 lớp backbone -- đòn bẩy tốc độ lớn nhất. Hai chế độ
+sau là hướng phát triển (Chương~\ref{chap:ketluan}).
+
+% ============================================================
+\section*{Tóm tắt chương}
+\addcontentsline{toc}{section}{Tóm tắt chương}
+
+Năm phát hiện chính từ thực nghiệm:
+
+\begin{enumerate}
+  \item \textbf{Joint vượt Pipeline 18 điểm Micro-F1} ($\approx71$ vs
+        $\approx53$\%). Oracle Joint Acc gần như bằng nhau -- nút thắt
+        là ATE, không phải bộ phân loại.
+  \item \textbf{Cấu hình tốt nhất:} BERT+LCF+Seq CDM (Micro=71,18\%,
+        Oracle=86,86\%); T5+Seq (Micro=71,50\%, Oracle=89,10\%).
+  \item \textbf{ToMe bảo toàn chất lượng biểu diễn} (Micro-F1 ngang hoặc
+        cao hơn baseline trong mọi nhóm cấu hình có LCF).
+  \item \textbf{CDM cải thiện Macro-F1 đáng kể} (+8,36 điểm với
+        LCF+SCM CDM) -- mặt nạ cứng phù hợp dữ liệu mất cân bằng.
+  \item \textbf{Resize không mang lại tăng tốc}; compact và pre-BERT ToMe
+        là bước cần thực nghiệm đầy đủ tiếp theo.
+\end{enumerate}

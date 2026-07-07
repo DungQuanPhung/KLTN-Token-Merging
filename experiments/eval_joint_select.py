@@ -16,7 +16,7 @@ Usage (from thesis_apc_baseline/):
     # Chỉ định runs-dir + tên folder
     python experiments/eval_joint_select.py --model-type bert \\
         --runs-dir Bert \\
-        --folders "baseline_balanced" "lcf_attn_cdm_resize" "lcf_seq_cdm_resize"
+        --folders "baseline_balanced" "lcf_scm_cdm_resize" "lcf_seq_cdm_resize"
 
     # Custom ATE file và output CSV
     python experiments/eval_joint_select.py --model-type bert \\
@@ -108,7 +108,7 @@ if not ATE_CSV.is_file():
 
 # ─── Align câu ATE CSV theo thứ tự dòng với test.apc ─────────────────────────
 
-from dataset_utils import parse_apc_file as _parse_apc
+from common.dataset_utils import parse_apc_file as _parse_apc
 
 _gold_sents = [e["text"] for e in _parse_apc(str(ROOT / "dataset" / "test.apc"))]
 

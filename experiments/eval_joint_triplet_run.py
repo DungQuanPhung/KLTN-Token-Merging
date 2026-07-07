@@ -69,7 +69,7 @@ ATE_CSV = Path(args.ate_csv) if args.ate_csv else ROOT / "runs_ate" / "test_ate_
 # Dòng i trong ATE CSV tương ứng với entry i trong test.apc.
 # Thay sentence text bằng gold sentence theo index để đảm bảo khớp exact string.
 
-from dataset_utils import parse_apc_file as _parse_apc
+from common.dataset_utils import parse_apc_file as _parse_apc
 
 _gold_sents = [e["text"] for e in _parse_apc(str(ROOT / "dataset" / "test.apc"))]
 
