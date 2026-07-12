@@ -9,10 +9,12 @@
 # Tuy chon:
 #   -ClauseSplitMode none|rulebase|uos   (mac dinh: uos)
 #   -SkipOllama                          (bo qua buoc khoi dong/kiem tra Ollama)
+#   -SkipInstall                         (bo qua buoc tao .venv/cai requirements.txt)
 
 param(
     [string]$ClauseSplitMode = "uos",
-    [switch]$SkipOllama
+    [switch]$SkipOllama,
+    [switch]$SkipInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +22,31 @@ $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $RepoRoot
 
 $VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+
+if (-not $SkipInstall) {
+    Write-Host "=== 0. Python venv & requirements.txt ===" -ForegroundColor Cyan
+
+    if (-not (Test-Path $VenvPython)) {
+        Write-Host "Khong thay .venv, dang tao moi (python -m venv .venv)..."
+        python -m venv (Join-Path $RepoRoot ".venv")
+    }
+
+    if (Test-Path $VenvPython) {
+        $reqFile = Join-Path $RepoRoot "requirements.txt"
+        if (Test-Path $reqFile) {
+            Write-Host "Dang kiem tra/cai dat requirements.txt (co the mat vai phut lan dau)..."
+            & $VenvPython -m pip install -r $reqFile
+        } else {
+            Write-Host "[!] Khong tim thay requirements.txt, bo qua buoc cai dat." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[!] Khong tao duoc .venv - dung python tu PATH thay the." -ForegroundColor Yellow
+        $VenvPython = "python"
+    }
+} else {
+    Write-Host "=== 0. Cai dat Python: bo qua (-SkipInstall) ===" -ForegroundColor DarkGray
+}
+
 if (-not (Test-Path $VenvPython)) {
     Write-Host "[!] Khong tim thay .venv\Scripts\python.exe - dung python tu PATH thay the." -ForegroundColor Yellow
     $VenvPython = "python"
