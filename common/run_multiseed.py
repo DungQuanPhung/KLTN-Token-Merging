@@ -98,7 +98,7 @@ USE_SUPPLEMENT       = False
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DEFAULT_SEEDS = [42, 123, 456]
+DEFAULT_SEEDS = [42]
 
 MODEL_REGISTRY = {
     "bert": "bert-base-uncased",
@@ -124,71 +124,77 @@ REF_METHODS = [
 
 ALL_CONFIGS: List[Tuple] = [
     # 1. Baseline
-    (False, False, False, True,  "bipartite",          False, "Base",        "baseline"),
+    # (False, False, False, True,  "bipartite",          False, "Base",        "baseline"),
     # 2–3. LCF only
-    (True,  True,  False, True,  "bipartite",          False, "CDM",         "lcf_only_cdm"),
-    (True,  False, False, True,  "bipartite",          False, "CDW",         "lcf_only_cdw"),
-    # 4–6. ToMe only
-    (False, False, True,  True,  "bipartite",          False, "BiToMe",      "bip"),
-    (False, False, True,  True,  "sequential_local",   False, "SLM",         "seq"),
-    (False, False, True,  True,  "sequential_cosine",  False, "SCM",         "scm"),
-    # 7–12. LCF + ToMe (resize)
-    (True,  True,  True,  True,  "bipartite",          False, "BiToMe+CDM",  "lcf_bip_cdm"),
-    (True,  False, True,  True,  "bipartite",          False, "BiToMe+CDW",  "lcf_bip_cdw"),
-    (True,  True,  True,  True,  "sequential_local",   False, "SLM+CDM",     "lcf_seq_cdm"),
-    (True,  False, True,  True,  "sequential_local",   False, "SLM+CDW",     "lcf_seq_cdw"),
-    (True,  True,  True,  True,  "sequential_cosine",  False, "SCM+CDM",     "lcf_scm_cdm"),
+    # (True,  True,  False, True,  "bipartite",          False, "CDM",         "lcf_only_cdm"),
+    # # (True,  False, False, True,  "bipartite",          False, "CDW",         "lcf_only_cdw"),
+    # # 4–6. ToMe only
+    # (False, False, True,  True,  "bipartite",          False, "BiToMe",      "bip"),
+    # (False, False, True,  True,  "sequential_local",   False, "SLM",         "seq"),
+    # (False, False, True,  True,  "sequential_cosine",  False, "SCM",         "scm"),
+    # # 7–12. LCF + ToMe (resize)
+    # (True,  True,  True,  True,  "bipartite",          False, "BiToMe+CDM",  "lcf_bip_cdm"),
+    # (True,  False, True,  True,  "bipartite",          False, "BiToMe+CDW",  "lcf_bip_cdw"),
+    # (True,  True,  True,  True,  "sequential_local",   False, "SLM+CDM",     "lcf_seq_cdm"),
+    # (True,  False, True,  True,  "sequential_local",   False, "SLM+CDW",     "lcf_seq_cdw"),
+    # (True,  True,  True,  True,  "sequential_cosine",  False, "SCM+CDM",     "lcf_scm_cdm"),
     (True,  False, True,  True,  "sequential_cosine",  False, "SCM+CDW",     "lcf_scm_cdw"),
 ]
 
 # ─── 4 compact configs (for tab:compact_vs_resize comparison) ─────────────────
 # Only run with --include-compact flag
 
-COMPACT_CONFIGS: List[Tuple] = [
-    (True,  True,  True,  False, "sequential_cosine",  False, "SCM+CDM(compact)",    "lcf_scm_cdm_compact"),
-    (True,  True,  True,  False, "bipartite",          False, "BiToMe+CDM(compact)", "lcf_bip_cdm_compact"),
-    (True,  True,  True,  False, "sequential_local",   False, "SLM+CDM(compact)",    "lcf_seq_cdm_compact"),
-    (True,  False, True,  False, "sequential_local",   False, "SLM+CDW(compact)",    "lcf_seq_cdw_compact"),
-]
+# COMPACT_CONFIGS: List[Tuple] = [
+#     (True,  True,  True,  False, "sequential_cosine",  False, "SCM+CDM(compact)",    "lcf_scm_cdm_compact"),
+#     (True,  True,  True,  False, "bipartite",          False, "BiToMe+CDM(compact)", "lcf_bip_cdm_compact"),
+#     (True,  True,  True,  False, "sequential_local",   False, "SLM+CDM(compact)",    "lcf_seq_cdm_compact"),
+#     (True,  False, True,  False, "sequential_local",   False, "SLM+CDW(compact)",    "lcf_seq_cdw_compact"),
+# ]
+COMPACT_CONFIGS: List[Tuple] = []
 
 CONFIG_BY_ID = {cfg[7]: cfg for cfg in ALL_CONFIGS + COMPACT_CONFIGS}
 
 # ─── Selected config groups for thesis tables ──────────────────────────────────
+# (không dùng trong lần chạy này — chỉ chạy 1 config lcf_scm_cdw để đo inference time)
 
 # tab:end2end_results — 5 BERT configs (display_name in table, short_id in data)
-E2E_BERT_CONFIGS = [
-    ("GAS + Base",       "baseline"),
-    ("GAS + BiTome",     "bip"),
-    ("GAS + SLM + CDM",  "lcf_seq_cdm"),
-    ("GAS + SLM + CDW",  "lcf_seq_cdw"),
-    ("GAS + SCM + CDM",  "lcf_scm_cdm"),
-]
+# E2E_BERT_CONFIGS = [
+#     ("GAS + Base",       "baseline"),
+#     ("GAS + BiTome",     "bip"),
+#     ("GAS + SLM + CDM",  "lcf_seq_cdm"),
+#     ("GAS + SLM + CDW",  "lcf_seq_cdw"),
+#     ("GAS + SCM + CDM",  "lcf_scm_cdm"),
+# ]
+E2E_BERT_CONFIGS: List[Tuple] = []
 
-# tab:t5_results — 5 T5 configs
-E2E_T5_CONFIGS = [
-    ("GAS + Base",   "baseline"),
-    ("BipTome + CDM", "lcf_bip_cdm"),
-    ("SCM + CDM",    "lcf_scm_cdm"),
-    ("SLM + CDM",    "lcf_seq_cdm"),
-    ("SLM + CDW",    "lcf_seq_cdw"),
-]
+# # tab:t5_results — 5 T5 configs
+# E2E_T5_CONFIGS = [
+#     ("GAS + Base",   "baseline"),
+#     ("BipTome + CDM", "lcf_bip_cdm"),
+#     ("SCM + CDM",    "lcf_scm_cdm"),
+#     ("SLM + CDM",    "lcf_seq_cdm"),
+#     ("SLM + CDW",    "lcf_seq_cdw"),
+# ]
+E2E_T5_CONFIGS: List[Tuple] = []
 
-# tab:compact_vs_resize — 4 config pairs (resize_id, compact_id, display_name)
-COMPACT_VS_RESIZE_CONFIGS = [
-    ("lcf_scm_cdm", "lcf_scm_cdm_compact", "SCM + CDM"),
-    ("lcf_bip_cdm",  "lcf_bip_cdm_compact",  "BiTome + CDM"),
-    ("lcf_seq_cdm",  "lcf_seq_cdm_compact",  "SLM + CDM"),
-    ("lcf_seq_cdw",  "lcf_seq_cdw_compact",  "SLM + CDW"),
-]
+# # tab:compact_vs_resize — 4 config pairs (resize_id, compact_id, display_name)
+# COMPACT_VS_RESIZE_CONFIGS = [
+#     ("lcf_scm_cdm", "lcf_scm_cdm_compact", "SCM + CDM"),
+#     ("lcf_bip_cdm",  "lcf_bip_cdm_compact",  "BiTome + CDM"),
+#     ("lcf_seq_cdm",  "lcf_seq_cdm_compact",  "SLM + CDM"),
+#     ("lcf_seq_cdw",  "lcf_seq_cdw_compact",  "SLM + CDW"),
+# ]
+COMPACT_VS_RESIZE_CONFIGS: List[Tuple] = []
 
-# tab:paper — our best E2E results to compare with GAS/TOFA
-# (display_name, model_type, config_id)
-PAPER_OUR_CONFIGS = [
-    ("Base (BERT)",              "bert", "baseline"),
-    ("BipTome+CDM Resize (T5)",  "t5",   "lcf_bip_cdm"),
-    ("SLM+CDM Resize (BERT)",    "bert", "lcf_seq_cdm"),
-    ("SLM+CDW Resize (BERT)",    "bert", "lcf_seq_cdw"),
-]
+# # tab:paper — our best E2E results to compare with GAS/TOFA
+# # (display_name, model_type, config_id)
+# PAPER_OUR_CONFIGS = [
+#     ("Base (BERT)",              "bert", "baseline"),
+#     ("BipTome+CDM Resize (T5)",  "t5",   "lcf_bip_cdm"),
+#     ("SLM+CDM Resize (BERT)",    "bert", "lcf_seq_cdm"),
+#     ("SLM+CDW Resize (BERT)",    "bert", "lcf_seq_cdw"),
+# ]
+PAPER_OUR_CONFIGS: List[Tuple] = []
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -861,9 +867,9 @@ def parse_args():
     )
     p.add_argument("--seeds", type=int, nargs="+", default=DEFAULT_SEEDS, metavar="N",
                    help=f"Seeds (default: {DEFAULT_SEEDS})")
-    p.add_argument("--model-types", nargs="+", default=["bert", "t5"],
+    p.add_argument("--model-types", nargs="+", default=["bert"],
                    choices=list(MODEL_REGISTRY),
-                   help="Backbones (default: bert t5)")
+                   help="Backbones (default: bert)")
     p.add_argument("--configs", nargs="+", default=None, metavar="ID",
                    help=f"Config IDs (default: all 12). Available: {[c[7] for c in ALL_CONFIGS]}")
     p.add_argument("--include-compact", action="store_true",
