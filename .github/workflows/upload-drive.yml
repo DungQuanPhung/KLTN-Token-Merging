@@ -16,33 +16,35 @@ jobs:
       - name: Zip Workspace
         run: zip -r release.zip . -x "*.git*"
 
-      # Đã nâng cấp lên Python 3.11 để khắc phục cảnh báo FutureWarning
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
       - name: Install Dependencies
-        run: pip install google-api-python-client google-auth
-
-      # Cách xuất file JSON an toàn hơn, tránh lỗi multiline
-      - name: Create credentials file
-        env:
-          CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-        run: echo "$CREDENTIALS" > service_account.json
+        run: pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2
 
       - name: Upload using Python
         env:
           FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
         run: |
           cat << 'EOF' > upload.py
           import os
-          from google.oauth2 import service_account
+          from google.oauth2.credentials import Credentials
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaFileUpload
 
-          SCOPES = ['https://www.googleapis.com/auth/drive']
-          creds = service_account.Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
+          # Sử dụng Refresh Token mới thay cho Service Account cũ
+          creds = Credentials(
+              token=None,
+              refresh_token=os.environ['REFRESH_TOKEN'],
+              token_uri='https://oauth2.googleapis.com/token',
+              client_id=os.environ['CLIENT_ID'],
+              client_secret=os.environ['CLIENT_SECRET']
+          )
           service = build('drive', 'v3', credentials=creds)
 
           file_metadata = {'name': 'release.zip', 'parents': [os.environ['FOLDER_ID']]}
@@ -56,4 +58,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f service_account.json upload.py release.zip
+        run: rm -f upload.py release.zip
