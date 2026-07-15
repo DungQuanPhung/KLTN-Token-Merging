@@ -3,8 +3,9 @@ name: Upload to Google Drive
 on:
   push:
     branches:
-      - tuyen # Chạy khi có code mới đẩy lên nhánh main
-  workflow_dispatch: # Thêm dòng này để bật tính năng chạy thủ công
+      - tuyen # Đã sửa lại đúng tên nhánh bạn đang thao tác
+  workflow_dispatch:
+
 jobs:
   upload:
     runs-on: ubuntu-latest
@@ -12,15 +13,48 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Nén toàn bộ source code thành file zip để dễ upload
       - name: Zip Workspace
         run: zip -r release.zip . -x "*.git*"
 
-      # Sử dụng Action để đẩy lên GDrive
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-action@main
+      # Thiết lập môi trường ảo Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          filename: "release.zip"
-          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          overwrite: "true" # Ghi đè file cũ nếu trùng tên
+          python-version: '3.10'
+
+      # Cài đặt thư viện Google API
+      - name: Install Dependencies
+        run: pip install google-api-python-client google-auth
+
+      # Khôi phục file cấu hình Service Account từ Secret
+      - name: Create credentials file
+        run: echo '${{ secrets.GDRIVE_CREDENTIALS }}' > service_account.json
+
+      # Viết và chạy trực tiếp script Python để upload
+      - name: Upload using Python
+        env:
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          cat << 'EOF' > upload.py
+          import os
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          SCOPES = ['https://www.googleapis.com/auth/drive']
+          creds = service_account.Credentials.from_service_account_file('service_account.json', scopes=SCOPES)
+          service = build('drive', 'v3', credentials=creds)
+
+          file_metadata = {'name': 'release.zip', 'parents': [os.environ['FOLDER_ID']]}
+          media = MediaFileUpload('release.zip', mimetype='application/zip', resumable=True)
+
+          print("Đang tiến hành upload lên Google Drive...")
+          file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+          print(f"Upload thành công! File ID: {file.get('id')}")
+          EOF
+          python upload.py
+
+      # Xóa file credentials sau khi chạy xong để bảo mật
+      - name: Cleanup
+        if: always()
+        run: rm -f service_account.json upload.py release.zip
