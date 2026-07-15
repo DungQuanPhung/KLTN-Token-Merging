@@ -3,8 +3,8 @@ name: Upload to Google Drive
 on:
   push:
     branches:
-      - main # Chạy khi có code mới đẩy lên nhánh main
-
+      - tuyen # Chạy khi có code mới đẩy lên nhánh main
+  workflow_dispatch: # Thêm dòng này để bật tính năng chạy thủ công
 jobs:
   upload:
     runs-on: ubuntu-latest
